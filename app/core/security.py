@@ -18,7 +18,11 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    subject: Union[str, Any],
+    expires_delta: Optional[timedelta] = None,
+    claims: Optional[Dict[str, Any]] = None,
+) -> str:
     """Create a signed JWT access token."""
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -31,6 +35,9 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
         "iat": datetime.now(timezone.utc),
         "type": "access",
     }
+    if claims:
+        to_encode.update(claims)
+
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 

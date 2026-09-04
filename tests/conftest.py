@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import User, TokenBlacklist
+from app.models import User, TokenBlacklist, PasswordResetToken, Branch
 
 # Test SQLite database
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"

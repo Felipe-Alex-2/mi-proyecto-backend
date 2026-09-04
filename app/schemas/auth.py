@@ -7,6 +7,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters long")
     full_name: str = Field(..., min_length=2, max_length=100)
+    phone: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -32,3 +33,14 @@ class TokenPayload(BaseModel):
     type: str = "access"  # "access" or "refresh"
     exp: int
     iat: int
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    token: str = Field(..., min_length=6, max_length=6, description="6-digit reset token")
+    new_password: str = Field(..., min_length=8, description="New password, at least 8 characters")
+

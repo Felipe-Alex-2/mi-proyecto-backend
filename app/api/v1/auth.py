@@ -8,6 +8,8 @@ from app.schemas.auth import (
     LoginRequest,
     TokenResponse,
     RefreshTokenRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 from app.schemas.user import UserResponse
 from app.schemas.common import MessageResponse
@@ -66,3 +68,30 @@ def logout(
 ):
     AuthService.blacklist_token(db, credentials.credentials)
     return MessageResponse(message="Successfully logged out")
+
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request password reset",
+    description="Sends a 6-digit one-time reset token to the user's email. Always returns success to prevent email enumeration.",
+)
+def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    AuthService.request_password_reset(db, request.email)
+    return MessageResponse(
+        message="Si el correo está registrado, recibirás un código de recuperación en tu bandeja de entrada."
+    )
+
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reset password with token",
+    description="Validates the 6-digit reset token and updates the user's password. Token is single-use and expires in 7 minutes.",
+)
+def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    AuthService.reset_password(db, request.email, request.token, request.new_password)
+    return MessageResponse(message="Contraseña actualizada exitosamente. Ya puedes iniciar sesión.")
+

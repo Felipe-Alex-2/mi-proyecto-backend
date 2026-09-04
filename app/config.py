@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Password Reset
+    RESET_TOKEN_EXPIRE_MINUTES: int = 7
+
+    # SMTP (Gmail)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_NAME: str = "FashionStore"
+
     # CORS — stored as plain str so pydantic-settings never calls json.loads() on it.
     # Railway: set CORS_ORIGINS=https://your-app.com,https://other.com  (comma-separated)
     # OR leave unset to use the default localhost origins.

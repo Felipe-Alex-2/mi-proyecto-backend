@@ -22,6 +22,12 @@ async def lifespan(app: FastAPI):
     # Ensure tables are created if not running with migrations or in tests
     try:
         Base.metadata.create_all(bind=engine)
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'ADMIN' NOT NULL;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_id VARCHAR(36) REFERENCES branches(id);"))
+            conn.commit()
     except Exception as exc:
         logger.warning(f"Note: Database table auto-creation skipped or deferred: {exc}")
     yield

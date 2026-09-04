@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserResponse, UserUpdate
+from app.schemas.user import UserResponse, UserUpdate, UserCreateAdmin, UserUpdateAdmin
 from app.services.user_service import UserService
-from app.api.deps import get_current_user
-from app.core.exceptions import ConflictException
+from app.api.deps import get_current_user, require_admin
+from app.core.exceptions import ConflictException, NotFoundException
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -40,3 +41,91 @@ def update_me(
 
     updated_user = UserService.update(db, current_user, request)
     return updated_user
+
+
+@router.get(
+    "",
+    response_model=List[UserResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List all users with filters (Admin only)",
+    description="Returns a list of users. Accessible only by Administrators.",
+)
+def list_users(
+    search: Optional[str] = Query(None, description="Search by name, email or phone"),
+    role: Optional[str] = Query(None, description="Filter by role"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return UserService.list_users(
+        db, search=search, role=role, is_active=is_active, skip=skip, limit=limit
+    )
+
+
+@router.post(
+    "",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new user/employee (Admin only)",
+    description="Allows an Administrator to create an employee account with a specific role.",
+)
+def create_user(
+    request: UserCreateAdmin,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return UserService.create_by_admin(db, request)
+
+
+@router.get(
+    "/{user_id}",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get user details by ID (Admin only)",
+)
+def get_user(
+    user_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = UserService.get_by_id(db, user_id)
+    if not user:
+        raise NotFoundException(detail="Usuario no encontrado")
+    return user
+
+
+@router.put(
+    "/{user_id}",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update user/employee data and role (Admin only)",
+)
+def update_user(
+    user_id: str,
+    request: UserUpdateAdmin,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = UserService.get_by_id(db, user_id)
+    if not user:
+        raise NotFoundException(detail="Usuario no encontrado")
+    return UserService.update_by_admin(db, user, request)
+
+
+@router.patch(
+    "/{user_id}/toggle-status",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Activate or deactivate a user account (Admin only)",
+)
+def toggle_user_status(
+    user_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = UserService.get_by_id(db, user_id)
+    if not user:
+        raise NotFoundException(detail="Usuario no encontrado")
+    return UserService.toggle_status(db, user, current_user.id)
