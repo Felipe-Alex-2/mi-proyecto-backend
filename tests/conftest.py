@@ -47,3 +47,24 @@ def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="function")
+def admin_token(db_session) -> str:
+    """Returns a valid access token for an ADMIN user."""
+    from app.core.security import get_password_hash, create_access_token
+    user = User(
+        email="admin_fixture@example.com",
+        hashed_password=get_password_hash("Password123!"),
+        full_name="Admin Fixture",
+        role="ADMIN",
+        is_active=True,
+        is_verified=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return create_access_token(
+        subject=user.id,
+        claims={"role": user.role, "email": user.email},
+    )
