@@ -8,6 +8,9 @@ from app.models.size import Size
 from app.models.color import Color
 from app.models.season import Season
 from app.models.supplier import Supplier
+from app.models.product import Product
+from app.models.product_variant import ProductVariant
+from app.models.stock import Stock
 
 __all__ = [
     "Base",
@@ -21,4 +24,7 @@ __all__ = [
     "Color",
     "Season",
     "Supplier",
+    "Product",
+    "ProductVariant",
+    "Stock",
 ]
