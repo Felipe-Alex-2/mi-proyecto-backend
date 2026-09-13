@@ -13,6 +13,11 @@ class InventoryMovementCreate(BaseModel):
     reference_number: Optional[str] = Field(None, max_length=100, description="Número de referencia/guía/factura")
 
 
+class InventoryMovementUpdate(BaseModel):
+    reason: Optional[str] = Field(None, min_length=5, max_length=255, description="Motivo corregido")
+    reference_number: Optional[str] = Field(None, max_length=100, description="Número de referencia/guía corregido")
+
+
 class InventoryMovementResponse(BaseModel):
     id: str
     variant_id: str

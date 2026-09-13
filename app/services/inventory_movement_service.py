@@ -8,7 +8,7 @@ from app.models.product_variant import ProductVariant
 from app.models.product import Product
 from app.models.user import User, UserRole
 from app.schemas.inventory_movement import (
-    InventoryMovementCreate,
+    InventoryMovementCreate, InventoryMovementUpdate,
     InventoryMovementResponse,
     BranchInventorySummary,
 )
@@ -190,3 +190,68 @@ class InventoryMovementService:
             low_stock_count=low_stock_count,
             out_of_stock_count=out_of_stock_count,
         )
+
+    @classmethod
+    def update_movement(
+        cls,
+        db: Session,
+        movement_id: str,
+        user: User,
+        data: InventoryMovementUpdate,
+    ) -> InventoryMovementResponse:
+        movement = db.query(InventoryMovement).filter(InventoryMovement.id == movement_id).first()
+        if not movement:
+            raise NotFoundException(detail="Movimiento de inventario no encontrado")
+
+        user_role = user.role.value if hasattr(user.role, "value") else str(user.role)
+        if user_role == UserRole.STORE_MANAGER.value and movement.branch_id != user.branch_id:
+            raise ForbiddenException(detail="No tienes permiso para modificar movimientos de otra sucursal")
+
+        if data.reason is not None and data.reason.strip():
+            movement.reason = data.reason.strip()
+        if data.reference_number is not None:
+            movement.reference_number = data.reference_number.strip() if data.reference_number else None
+
+        db.commit()
+        db.refresh(movement)
+        return cls._enrich_movement(movement)
+
+    @classmethod
+    def delete_movement(
+        cls,
+        db: Session,
+        movement_id: str,
+        user: User,
+    ) -> None:
+        movement = db.query(InventoryMovement).filter(InventoryMovement.id == movement_id).first()
+        if not movement:
+            raise NotFoundException(detail="Movimiento de inventario no encontrado")
+
+        user_role = user.role.value if hasattr(user.role, "value") else str(user.role)
+        if user_role == UserRole.STORE_MANAGER.value and movement.branch_id != user.branch_id:
+            raise ForbiddenException(detail="No tienes permiso para revertir/eliminar movimientos de otra sucursal")
+
+        # Reverse stock change
+        stock = db.query(Stock).filter(
+            Stock.variant_id == movement.variant_id,
+            Stock.branch_id == movement.branch_id,
+        ).first()
+
+        if stock:
+            # Revert the quantity applied by this movement
+            if movement.type in (MovementType.ENTRY.value, MovementType.RETURN.value):
+                # When created, it added quantity. Reverting means subtracting.
+                if stock.quantity < movement.quantity:
+                    raise BadRequestException(
+                        detail=f"No se puede revertir este movimiento porque el stock actual ({stock.quantity}) es menor a la cantidad a retirar ({movement.quantity})"
+                    )
+                stock.quantity -= movement.quantity
+            elif movement.type == MovementType.EXIT.value:
+                # When created, it subtracted quantity. Reverting means adding back.
+                stock.quantity += movement.quantity
+            elif movement.type == MovementType.ADJUSTMENT.value:
+                # Revert to previous stock before adjustment
+                stock.quantity = movement.previous_stock
+
+        db.delete(movement)
+        db.commit()

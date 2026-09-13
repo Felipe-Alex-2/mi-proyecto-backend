@@ -148,6 +148,14 @@ class ReservationService:
         db.flush()
 
         for item_in in data.items:
+            stock = (
+                db.query(Stock)
+                .filter(Stock.variant_id == item_in.variant_id, Stock.branch_id == data.branch_id)
+                .first()
+            )
+            if stock:
+                stock.quantity = max(0, stock.quantity - item_in.quantity)
+
             res_item = ReservationItem(
                 reservation_id=reservation.id,
                 variant_id=item_in.variant_id,
@@ -240,6 +248,13 @@ class ReservationService:
                     detail="Se requiere una nota explicativa de al menos 5 caracteres al completar o cancelar una reserva"
                 )
 
+        prev_status = r.status
+        if target_status in (ReservationStatus.CANCELLED.value, ReservationStatus.EXPIRED.value) and prev_status in (ReservationStatus.PENDING.value, ReservationStatus.CONFIRMED.value):
+            for item in r.items:
+                stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+                if stk:
+                    stk.quantity += item.quantity
+
         r.status = target_status
         r.staff_notes = notes if notes else None
         r.staff_user_id = user.id
@@ -266,6 +281,11 @@ class ReservationService:
             raise BadRequestException(
                 detail=f"No se puede cancelar una reserva que se encuentra en estado '{r.status}'"
             )
+
+        for item in r.items:
+            stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+            if stk:
+                stk.quantity += item.quantity
 
         r.status = ReservationStatus.CANCELLED.value
         r.staff_notes = "Cancelada voluntariamente por el cliente desde la app"

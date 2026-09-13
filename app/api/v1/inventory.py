@@ -1,4 +1,5 @@
-﻿from typing import List, Optional
+from app.schemas.common import MessageResponse
+from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_roles
@@ -7,6 +8,7 @@ from app.models.user import User, UserRole
 from app.schemas.inventory_movement import (
     InventoryMovementCreate,
     InventoryMovementResponse,
+    InventoryMovementUpdate,
     BranchInventorySummary,
 )
 from app.services.inventory_movement_service import InventoryMovementService
@@ -82,3 +84,33 @@ def get_branch_summary(
     current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER, UserRole.CASHIER)),
 ):
     return InventoryMovementService.get_branch_summary(db=db, branch_id=branch_id)
+
+
+@router.put(
+    "/movements/{id}",
+    response_model=InventoryMovementResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Editar motivo o referencia de un movimiento de inventario",
+)
+def update_movement(
+    id: str,
+    payload: InventoryMovementUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
+):
+    return InventoryMovementService.update_movement(db=db, movement_id=id, user=current_user, data=payload)
+
+
+@router.delete(
+    "/movements/{id}",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Eliminar y revertir el impacto de stock de un movimiento de inventario",
+)
+def delete_movement(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
+):
+    InventoryMovementService.delete_movement(db=db, movement_id=id, user=current_user)
+    return MessageResponse(message="Movimiento de inventario eliminado y stock revertido exitosamente")
