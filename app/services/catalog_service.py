@@ -49,7 +49,7 @@ class CatalogService:
             categories=[{"id": c.id, "name": c.name, "description": c.description} for c in categories],
             sizes=[{"id": s.id, "name": s.name, "code": s.code} for s in sizes],
             colors=[{"id": c.id, "name": c.name, "hex_code": c.hex_code} for c in colors],
-            seasons=[{"id": s.id, "name": s.name, "code": s.code} for s in seasons],
+            seasons=[{"id": s.id, "name": s.name, "description": s.description} for s in seasons],
             branches=[{"id": b.id, "name": b.name, "city": b.city, "address": b.address} for b in branches],
             genders=["Hombre", "Mujer", "Unisex", "Niños"],
             min_price=min_p,
