@@ -1,15 +1,31 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.schemas.stock import StockResponse
+from app.core.validators import validate_required_string, validate_not_blank
 
 
 class VariantCreate(BaseModel):
     size_id: str
     color_id: str
     sku: Optional[str] = None
-    price_override: Optional[float] = None
+    price_override: Optional[float] = Field(None, gt=0)
     initial_stock: Optional[Dict[str, int]] = Field(default_factory=dict, description="Diccionario branch_id -> cantidad")
+
+    @field_validator("size_id")
+    @classmethod
+    def check_size_id(cls, v: str) -> str:
+        return validate_required_string(v, "ID de talla", 1)
+
+    @field_validator("color_id")
+    @classmethod
+    def check_color_id(cls, v: str) -> str:
+        return validate_required_string(v, "ID de color", 1)
+
+    @field_validator("sku")
+    @classmethod
+    def check_sku(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "código SKU")
 
 
 class ProductVariantResponse(BaseModel):
@@ -41,6 +57,26 @@ class ProductCreate(BaseModel):
     gender: str = Field("UNISEX", description="HOMBRE, MUJER, UNISEX, NIÑOS")
     variants: List[VariantCreate] = Field(default_factory=list)
 
+    @field_validator("name")
+    @classmethod
+    def check_name(cls, v: str) -> str:
+        return validate_required_string(v, "nombre de la prenda", 2)
+
+    @field_validator("category_id")
+    @classmethod
+    def check_category_id(cls, v: str) -> str:
+        return validate_required_string(v, "categoría", 1)
+
+    @field_validator("description")
+    @classmethod
+    def check_description(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "descripción")
+
+    @field_validator("image_url")
+    @classmethod
+    def check_image_url(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "URL de imagen")
+
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=150)
@@ -52,6 +88,33 @@ class ProductUpdate(BaseModel):
     image_url: Optional[str] = None
     gender: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def check_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            return validate_required_string(v, "nombre de la prenda", 2)
+        return v
+
+    @field_validator("category_id")
+    @classmethod
+    def check_category_id(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "categoría")
+
+    @field_validator("description")
+    @classmethod
+    def check_description(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "descripción")
+
+    @field_validator("gender")
+    @classmethod
+    def check_gender(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "género")
+
+    @field_validator("image_url")
+    @classmethod
+    def check_image_url(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "URL de imagen")
 
 
 class ProductResponse(BaseModel):

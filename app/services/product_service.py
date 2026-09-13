@@ -1,8 +1,9 @@
-import re
+﻿import re
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.category import Category
 from app.models.color import Color
@@ -38,6 +39,14 @@ class ProductService:
 
     @staticmethod
     def create_product(db: Session, payload: ProductCreate) -> Product:
+        clean_name = payload.name.strip()
+        existing_product = db.query(Product).filter(func.lower(Product.name) == clean_name.lower()).first()
+        if existing_product:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Ya existe una prenda con el nombre '{clean_name}'"
+            )
+
         category = db.query(Category).filter(Category.id == payload.category_id).first()
         if not category:
             raise HTTPException(
@@ -62,37 +71,32 @@ class ProductService:
                 )
 
         product = Product(
-            name=payload.name.strip(),
+            name=clean_name,
             description=payload.description.strip() if payload.description else None,
             price=payload.price,
             category_id=payload.category_id,
             season_id=payload.season_id,
             supplier_id=payload.supplier_id,
             image_url=payload.image_url.strip() if payload.image_url else None,
-            gender=payload.gender.upper(),
+            gender=payload.gender.upper() if payload.gender else "UNISEX",
+            is_active=True,
         )
         db.add(product)
         db.flush()
 
-        seen_combinations = set()
         for variant_data in payload.variants:
-            combo_key = (variant_data.size_id, variant_data.color_id)
-            if combo_key in seen_combinations:
-                continue
-            seen_combinations.add(combo_key)
-
             size = db.query(Size).filter(Size.id == variant_data.size_id).first()
             if not size:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Talla con ID {variant_data.size_id} no encontrada"
+                    detail=f"Talla con ID '{variant_data.size_id}' no encontrada"
                 )
 
             color = db.query(Color).filter(Color.id == variant_data.color_id).first()
             if not color:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Color con ID {variant_data.color_id} no encontrado"
+                    detail=f"Color con ID '{variant_data.color_id}' no encontrado"
                 )
 
             sku = variant_data.sku
@@ -237,7 +241,19 @@ class ProductService:
             )
 
         if payload.name is not None:
-            product.name = payload.name.strip()
+            clean_name = payload.name.strip()
+            if clean_name.lower() != product.name.lower():
+                existing = db.query(Product).filter(
+                    func.lower(Product.name) == clean_name.lower(),
+                    Product.id != product.id
+                ).first()
+                if existing:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"Ya existe otra prenda con el nombre '{clean_name}'"
+                    )
+            product.name = clean_name
+
         if payload.description is not None:
             product.description = payload.description.strip() if payload.description else None
         if payload.price is not None:

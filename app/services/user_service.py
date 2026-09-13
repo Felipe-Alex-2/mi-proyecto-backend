@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple
+﻿from typing import Optional, List, Tuple
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.models.user import User, UserRole
@@ -21,8 +21,13 @@ class UserService:
     @staticmethod
     def create(db: Session, obj_in: UserCreate) -> User:
         """Create a new user with hashed password (autoregistration assigns ADMIN by MVP rule)."""
+        clean_email = obj_in.email.lower().strip()
+        existing = UserService.get_by_email(db, clean_email)
+        if existing:
+            raise ConflictException(detail="El correo electrónico ya está registrado")
+
         db_obj = User(
-            email=obj_in.email.lower().strip(),
+            email=clean_email,
             hashed_password=get_password_hash(obj_in.password),
             full_name=obj_in.full_name.strip(),
             phone=getattr(obj_in, "phone", None),
@@ -41,7 +46,12 @@ class UserService:
         if obj_in.full_name is not None:
             db_obj.full_name = obj_in.full_name.strip()
         if obj_in.email is not None:
-            db_obj.email = obj_in.email.lower().strip()
+            clean_email = obj_in.email.lower().strip()
+            if clean_email != db_obj.email.lower():
+                existing = UserService.get_by_email(db, clean_email)
+                if existing:
+                    raise ConflictException(detail="El correo electrónico ya está registrado por otro usuario")
+                db_obj.email = clean_email
         if getattr(obj_in, "phone", None) is not None:
             db_obj.phone = obj_in.phone.strip() if obj_in.phone else None
         if obj_in.password is not None:
