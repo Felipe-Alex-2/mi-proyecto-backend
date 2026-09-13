@@ -1,17 +1,18 @@
-from typing import List, Optional
+﻿from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, require_admin, require_roles
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.stock import (
     BranchInventoryItem,
     StockAdjustRequest,
     StockResponse,
 )
+from app.schemas.inventory_movement import VariantBranchAvailability
 from app.services.stock_service import StockService
 
-router = APIRouter(prefix="/stocks", tags=["Stock & Inventory"])
+router = APIRouter(prefix="/stocks", tags=["Stock & Inventory (CU10)"])
 
 
 @router.get(
@@ -33,6 +34,34 @@ def get_branch_inventory(
         search=search,
         low_stock_only=low_stock_only,
     )
+
+
+@router.get(
+    "/variant/{variant_id}/availability",
+    response_model=List[VariantBranchAvailability],
+    status_code=status.HTTP_200_OK,
+    summary="Consultar disponibilidad de una variante en todas las sucursales con indicadores",
+)
+def get_variant_availability(
+    variant_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return StockService.get_variant_availability(db=db, variant_id=variant_id)
+
+
+@router.get(
+    "/matrix",
+    response_model=List[Dict[str, Any]],
+    status_code=status.HTTP_200_OK,
+    summary="Matriz de disponibilidad cruzada de variantes por sucursal (Admin / Staff)",
+)
+def get_availability_matrix(
+    product_id: Optional[str] = Query(None, description="Filtrar por ID de producto"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER, UserRole.CASHIER)),
+):
+    return StockService.get_availability_matrix(db=db, product_id=product_id)
 
 
 @router.post(
