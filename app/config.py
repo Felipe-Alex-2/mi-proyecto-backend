@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     # Project Info
     PROJECT_NAME: str = "Auth API"
+    SEED_USERS: str = ""
     ENVIRONMENT: str = "development"
 
     # Database
