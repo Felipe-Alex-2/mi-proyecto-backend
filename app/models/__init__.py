@@ -1,4 +1,4 @@
-from app.database import Base
+﻿from app.database import Base
 from app.models.user import User, UserRole
 from app.models.token_blacklist import TokenBlacklist
 from app.models.password_reset_token import PasswordResetToken
@@ -11,6 +11,10 @@ from app.models.supplier import Supplier
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.stock import Stock
+from app.models.inventory_movement import InventoryMovement, MovementType
+from app.models.cart_item import CartItem
+from app.models.reservation import Reservation, ReservationStatus
+from app.models.reservation_item import ReservationItem
 
 __all__ = [
     "Base",
@@ -27,4 +31,10 @@ __all__ = [
     "Product",
     "ProductVariant",
     "Stock",
+    "InventoryMovement",
+    "MovementType",
+    "CartItem",
+    "Reservation",
+    "ReservationStatus",
+    "ReservationItem",
 ]

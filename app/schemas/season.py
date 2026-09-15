@@ -1,6 +1,7 @@
-from datetime import datetime, date
+﻿from datetime import datetime, date
 from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
+from app.core.validators import validate_required_string, validate_not_blank
 
 
 class SeasonCreate(BaseModel):
@@ -8,6 +9,16 @@ class SeasonCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=255)
     start_date: date
     end_date: date
+
+    @field_validator("name")
+    @classmethod
+    def check_name(cls, v: str) -> str:
+        return validate_required_string(v, "nombre de la temporada", 2)
+
+    @field_validator("description")
+    @classmethod
+    def check_description(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "descripción")
 
     @model_validator(mode="after")
     def check_dates(self):
@@ -22,6 +33,18 @@ class SeasonUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     is_active: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def check_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            return validate_required_string(v, "nombre de la temporada", 2)
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def check_description(cls, v: Optional[str]) -> Optional[str]:
+        return validate_not_blank(v, "descripción")
 
     @model_validator(mode="after")
     def check_dates(self):
