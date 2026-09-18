@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # Password Reset
     RESET_TOKEN_EXPIRE_MINUTES: int = 7
 
+    # Gemini reports
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.6-flash"
+
     # SMTP (Gmail)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

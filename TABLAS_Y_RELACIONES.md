@@ -9,11 +9,15 @@ Este documento resume las tablas definidas en `app/models` y las relaciones entr
 El backend tiene estas tablas actualmente definidas:
 
 - `branches`
+- `cart_items`
 - `categories`
 - `colors`
+- `inventory_movements`
 - `password_reset_tokens`
 - `products`
 - `product_variants`
+- `reservations`
+- `reservation_items`
 - `seasons`
 - `sizes`
 - `stocks`
@@ -29,6 +33,8 @@ El backend tiene estas tablas actualmente definidas:
 erDiagram
     BRANCH ||--o{ USER : tiene_empleados
     BRANCH ||--o{ STOCK : tiene_stock
+    BRANCH ||--o{ RESERVATION : atiende
+    BRANCH ||--o{ INVENTORY_MOVEMENT : registra_movimientos
 
     CATEGORY ||--o{ PRODUCT : categoriza
     SEASON ||--o{ PRODUCT : aplica
@@ -39,8 +45,16 @@ erDiagram
     COLOR ||--o{ PRODUCT_VARIANT : usa_color
 
     PRODUCT_VARIANT ||--o{ STOCK : tiene_stock_por_sucursal
+    PRODUCT_VARIANT ||--o{ CART_ITEM : agregado_al_carrito
+    PRODUCT_VARIANT ||--o{ RESERVATION_ITEM : reservado
+    PRODUCT_VARIANT ||--o{ INVENTORY_MOVEMENT : registra_movimientos
 
     USER ||--o{ PASSWORD_RESET_TOKEN : recibe_tokens
+    USER ||--o{ CART_ITEM : tiene_carrito
+    USER ||--o{ RESERVATION : compra_o_reserva
+    USER ||--o{ INVENTORY_MOVEMENT : registra_movimientos
+
+    RESERVATION ||--o{ RESERVATION_ITEM : contiene
 ```
 
 ## 3) Definición de cada tabla
@@ -65,6 +79,9 @@ Atributos:
 Relaciones:
 - `branches` → `users` (`branch_id`)
 - `users` → `password_reset_tokens` (`user_id`)
+- `users` → `cart_items` (`user_id`)
+- `users` → `reservations` (`customer_id` y `staff_user_id`)
+- `users` → `inventory_movements` (`user_id`)
 - `branches` → `employees` (relación inversa)
 
 ---
@@ -87,6 +104,8 @@ Atributos:
 Relaciones:
 - `branches` → `users` (`employees`)
 - `branches` → `stocks` (`branch_id`)
+- `branches` → `reservations` (`branch_id`)
+- `branches` → `inventory_movements` (`branch_id`)
 
 ---
 
@@ -228,6 +247,9 @@ Relaciones:
 - `product_variants` → `sizes` (`size_id`)
 - `product_variants` → `colors` (`color_id`)
 - `product_variants` → `stocks` (`variant_id`)
+- `product_variants` → `cart_items` (`variant_id`)
+- `product_variants` → `reservation_items` (`variant_id`)
+- `product_variants` → `inventory_movements` (`variant_id`)
 
 ---
 
@@ -246,6 +268,89 @@ Atributos:
 Relaciones:
 - `stocks` → `product_variants` (`variant_id`)
 - `stocks` → `branches` (`branch_id`)
+
+---
+
+### `cart_items`
+
+Elementos del carrito de compra por usuario y variante.
+
+Atributos:
+- `id`: `String(36)`, PK, obligatorio, no puede ser `NULL`
+- `user_id`: `String(36)`, FK a `users.id`, obligatorio, no puede ser `NULL`
+- `variant_id`: `String(36)`, FK a `product_variants.id`, obligatorio, no puede ser `NULL`
+- `quantity`: `Integer`, obligatorio, no puede ser `NULL`, por defecto `1`
+- `added_at`: `DateTime`, obligatorio, no puede ser `NULL`
+- `updated_at`: `DateTime`, obligatorio, no puede ser `NULL`
+
+Relaciones:
+- `cart_items` → `users` (`user_id`)
+- `cart_items` → `product_variants` (`variant_id`)
+
+---
+
+### `reservations`
+
+Reservas de productos para clientes.
+
+Atributos:
+- `id`: `String(36)`, PK, obligatorio, no puede ser `NULL`
+- `reservation_code`: `String(20)`, único, obligatorio, no puede ser `NULL`
+- `customer_id`: `String(36)`, FK a `users.id`, obligatorio, no puede ser `NULL`
+- `branch_id`: `String(36)`, FK a `branches.id`, obligatorio, no puede ser `NULL`
+- `status`: `String(20)`, obligatorio, no puede ser `NULL`, por defecto `PENDING`
+- `customer_notes`: `String(500)`, opcional, puede ser `NULL`
+- `staff_notes`: `String(500)`, opcional, puede ser `NULL`
+- `staff_user_id`: `String(36)`, FK a `users.id`, opcional, puede ser `NULL`
+- `created_at`: `DateTime`, obligatorio, no puede ser `NULL`
+- `expires_at`: `DateTime`, obligatorio, no puede ser `NULL`
+- `updated_at`: `DateTime`, obligatorio, no puede ser `NULL`
+
+Relaciones:
+- `reservations` → `users` (`customer_id`)
+- `reservations` → `users` (`staff_user_id`)
+- `reservations` → `branches` (`branch_id`)
+- `reservations` → `reservation_items` (`reservation_id`)
+
+---
+
+### `reservation_items`
+
+Líneas de una reserva.
+
+Atributos:
+- `id`: `String(36)`, PK, obligatorio, no puede ser `NULL`
+- `reservation_id`: `String(36)`, FK a `reservations.id`, obligatorio, no puede ser `NULL`
+- `variant_id`: `String(36)`, FK a `product_variants.id`, obligatorio, no puede ser `NULL`
+- `quantity`: `Integer`, obligatorio, no puede ser `NULL`, por defecto `1`
+
+Relaciones:
+- `reservation_items` → `reservations` (`reservation_id`)
+- `reservation_items` → `product_variants` (`variant_id`)
+
+---
+
+### `inventory_movements`
+
+Movimientos de inventario por variante, sucursal y usuario.
+
+Atributos:
+- `id`: `String(36)`, PK, obligatorio, no puede ser `NULL`
+- `variant_id`: `String(36)`, FK a `product_variants.id`, obligatorio, no puede ser `NULL`
+- `branch_id`: `String(36)`, FK a `branches.id`, obligatorio, no puede ser `NULL`
+- `type`: `String(20)`, obligatorio, no puede ser `NULL`
+- `quantity`: `Integer`, obligatorio, no puede ser `NULL`
+- `reason`: `String(255)`, obligatorio, no puede ser `NULL`
+- `reference_number`: `String(100)`, opcional, puede ser `NULL`
+- `previous_stock`: `Integer`, obligatorio, no puede ser `NULL`, por defecto `0`
+- `new_stock`: `Integer`, obligatorio, no puede ser `NULL`, por defecto `0`
+- `user_id`: `String(36)`, FK a `users.id`, opcional, puede ser `NULL`
+- `created_at`: `DateTime`, obligatorio, no puede ser `NULL`
+
+Relaciones:
+- `inventory_movements` → `product_variants` (`variant_id`)
+- `inventory_movements` → `branches` (`branch_id`)
+- `inventory_movements` → `users` (`user_id`)
 
 ---
 
@@ -290,6 +395,15 @@ Relaciones:
 - `product_variants.color_id` → `colors.id`
 - `stocks.variant_id` → `product_variants.id`
 - `stocks.branch_id` → `branches.id`
+- `cart_items.user_id` → `users.id`
+- `cart_items.variant_id` → `product_variants.id`
+- `reservations.customer_id` → `users.id`
+- `reservations.branch_id` → `branches.id`
+- `reservation_items.reservation_id` → `reservations.id`
+- `reservation_items.variant_id` → `product_variants.id`
+- `inventory_movements.variant_id` → `product_variants.id`
+- `inventory_movements.branch_id` → `branches.id`
+- `inventory_movements.user_id` → `users.id`
 - `password_reset_tokens.user_id` → `users.id`
 
 ## 5) Nota importante sobre la estructura del proyecto
@@ -300,4 +414,4 @@ Relaciones:
 - `app/schemas`: define el formato de datos para requests/responses.
 - `alembic`: compara y aplica migraciones de base de datos.
 
-Si quieres, en el siguiente paso puedo también generar una versión de este archivo con un diagrama más visual, o una versión más corta tipo “tabla por tabla en formato de documentación”.
+Si quieres, en el siguiente paso puedo generar una segunda versión con un diagrama más “visual” tipo entidad-relación y con una sección de “qué tabla se usa para qué flujo del negocio” (carrito, inventario, reservas, usuarios y productos).
