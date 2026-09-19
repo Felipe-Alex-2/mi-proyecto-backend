@@ -85,7 +85,6 @@ class PaymentService:
         # Auto-sync pending PayPal payments with Sandbox
         pending_paypal_q = db.query(Payment).filter(
             Payment.status == "PENDING",
-            Payment.payment_type == "PAYPAL",
             Payment.paypal_order_id.isnot(None),
         )
         if user_role in (UserRole.STORE_MANAGER.value, UserRole.CASHIER.value) and user.branch_id:
@@ -281,13 +280,14 @@ class PaymentService:
         concept_clean = p.concept[:120] if p.concept else f"Cobro {p.payment_code}"
 
         try:
-            # Create PayPal Sandbox order with public return-url
+            # Redirigir a PayPal Sandbox para que el usuario permanezca en PayPal y no intente abrir un localhost que cause ERR_CONNECTION_REFUSED
+            sandbox_home = "https://www.sandbox.paypal.com"
             paypal_result = PayPalService.create_order(
                 amount=amount_val,
                 currency=currency_val,
                 description=f"Caja {p.payment_code}: {concept_clean}",
-                return_url=f"{settings.FRONTEND_URL}/paypal-return?source=pos",
-                cancel_url=f"{settings.FRONTEND_URL}/paypal-return?source=pos&cancelled=true",
+                return_url=sandbox_home,
+                cancel_url=sandbox_home,
                 custom_id=p.id,
             )
         except Exception as e:
