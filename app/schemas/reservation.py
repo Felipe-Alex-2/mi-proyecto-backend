@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models.reservation import ReservationStatus
 
 
@@ -87,7 +87,16 @@ class PayPalOrderResponse(BaseModel):
 
 
 class PayPalCaptureRequest(BaseModel):
-    paypal_order_id: str = Field(..., description="ID de orden emitida por PayPal")
+    paypal_order_id: Optional[str] = Field(None, description="ID de orden emitida por PayPal")
+    order_id: Optional[str] = Field(None, description="ID de orden emitida por PayPal (alias móvil)")
+
+    @model_validator(mode="after")
+    def resolve_order_id(self):
+        resolved = self.paypal_order_id or self.order_id
+        if not resolved:
+            raise ValueError("paypal_order_id u order_id es requerido")
+        self.paypal_order_id = resolved
+        return self
 
 
 class PayPalCaptureResponse(BaseModel):

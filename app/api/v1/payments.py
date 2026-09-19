@@ -12,7 +12,7 @@ from app.schemas.payment import (
     PaymentProcess,
 )
 from app.services.payment_service import PaymentService
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_flexible
 
 router = APIRouter(prefix="/payments", tags=["Caja y Pagos (POS)"])
 
@@ -145,8 +145,9 @@ def public_capture_paypal_order(
 @router.get("/{payment_id}/invoice-pdf")
 def get_payment_invoice_pdf(
     payment_id: str,
+    token: Optional[str] = Query(None, description="Token JWT para descarga directa"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     """
     Genera y descarga la factura oficial en formato PDF para una orden de cobro.

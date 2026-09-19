@@ -73,6 +73,20 @@ async def lifespan(app: FastAPI):
                 "CREATE INDEX IF NOT EXISTS ix_payments_branch_id ON payments (branch_id);",
                 "CREATE INDEX IF NOT EXISTS ix_payments_reservation_id ON payments (reservation_id);",
                 "CREATE INDEX IF NOT EXISTS ix_payments_payment_code ON payments (payment_code);",
+                """
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+                    reservation_id VARCHAR(36) REFERENCES reservations(id),
+                    title VARCHAR(200) NOT NULL,
+                    message TEXT NOT NULL,
+                    notification_type VARCHAR(50) NOT NULL DEFAULT 'RESERVATION_ACCEPTED',
+                    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+                """,
+                "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications (user_id);",
+                "CREATE INDEX IF NOT EXISTS ix_notifications_is_read ON notifications (is_read);",
             ]:
                 try:
                     conn.execute(text(col_sql))
@@ -103,6 +117,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 # Global Exception Handlers

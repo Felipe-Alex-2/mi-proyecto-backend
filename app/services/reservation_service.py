@@ -591,6 +591,14 @@ class ReservationService:
         db.commit()
         db.refresh(r)
 
+        # Trigger customer notification when reservation is accepted/confirmed
+        if target_status == ReservationStatus.CONFIRMED.value:
+            from app.services.notification_service import NotificationService
+            try:
+                NotificationService.create_reservation_accepted_notification(db, r)
+            except Exception as notif_err:
+                logger.warning(f"Error creando notificación para reserva {r.id}: {notif_err}")
+
         return cls._enrich_reservation(r)
 
     @classmethod

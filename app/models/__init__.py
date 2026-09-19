@@ -16,6 +16,7 @@ from app.models.cart_item import CartItem
 from app.models.reservation import Reservation, ReservationStatus
 from app.models.reservation_item import ReservationItem
 from app.models.payment import Payment
+from app.models.notification import Notification
 
 __all__ = [
     "Base",
@@ -39,4 +40,5 @@ __all__ = [
     "ReservationStatus",
     "ReservationItem",
     "Payment",
+    "Notification",
 ]
