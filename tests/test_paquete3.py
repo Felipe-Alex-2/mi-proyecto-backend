@@ -249,7 +249,16 @@ def test_cu13_reservations_flow(client, db_session):
         headers=cust_headers,
     )
     assert res_err.status_code == 400
-    assert res_err.json()["detail"] == "Esta sucursal no tiene stock disponible"
+    assert "no hay stock de esta prenda" in res_err.json()["detail"].lower()
+
+    # 1b. Validation: Customer attempts reservation in branch with insufficient stock (stock is 5, requests 10)
+    res_err2 = client.post(
+        "/api/v1/reservations",
+        json={"branch_id": branch.id, "items": [{"variant_id": variant.id, "quantity": 10}]},
+        headers=cust_headers,
+    )
+    assert res_err2.status_code == 400
+    assert "no tiene stock suficiente" in res_err2.json()["detail"].lower()
 
     # 2. Customer creates reservation in branch with stock
     res_payload = {

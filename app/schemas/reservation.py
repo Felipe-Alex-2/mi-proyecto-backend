@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.reservation import ReservationStatus
@@ -6,12 +6,12 @@ from app.models.reservation import ReservationStatus
 
 class ReservationItemCreate(BaseModel):
     variant_id: str = Field(..., description="ID de la variante")
-    quantity: int = Field(1, ge=1, le=5, description="Cantidad a reservar (1 a 5 por item)")
+    quantity: int = Field(1, ge=1, le=50, description="Cantidad a reservar")
 
 
 class ReservationCreate(BaseModel):
     branch_id: str = Field(..., description="Sucursal donde se realizará la prueba")
-    items: List[ReservationItemCreate] = Field(..., min_length=1, max_length=10, description="Prendas a reservar")
+    items: List[ReservationItemCreate] = Field(..., min_length=1, max_length=50, description="Prendas a reservar")
     customer_notes: Optional[str] = Field(None, max_length=500, description="Notas o comentarios del cliente")
 
 

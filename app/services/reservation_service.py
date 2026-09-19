@@ -124,9 +124,14 @@ class ReservationService:
                 .first()
             )
             available = stock.quantity if stock else 0
+            prod_name = variant.product.name if variant.product else "esta prenda"
+            if available == 0:
+                raise BadRequestException(
+                    detail=f"En esta sucursal no hay stock de esta prenda ({prod_name})"
+                )
             if available < item_in.quantity:
                 raise BadRequestException(
-                    detail="Esta sucursal no tiene stock disponible"
+                    detail=f"Esta sucursal no tiene stock suficiente para {prod_name}. Disponible: {available}, solicitado: {item_in.quantity}"
                 )
             variant_ids_in_reservation.append(item_in.variant_id)
 
