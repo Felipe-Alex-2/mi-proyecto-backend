@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter
+from fastapi import APIRouter
 from app.api.v1.auth import router as auth_router
 from app.api.v1.users import router as users_router
 from app.api.v1.branches import router as branches_router
@@ -12,6 +12,7 @@ from app.api.v1.cart import router as cart_router
 from app.api.v1.reservations import router as reservations_router
 from app.api.v1.catalog import router as catalog_router
 from app.api.v1.reports import router as reports_router
+from app.api.v1.payments import router as payments_router
 
 api_v1_router = APIRouter(prefix="/v1")
 
@@ -28,3 +29,5 @@ api_v1_router.include_router(cart_router)
 api_v1_router.include_router(reservations_router)
 api_v1_router.include_router(catalog_router)
 api_v1_router.include_router(reports_router)
+api_v1_router.include_router(payments_router)
+

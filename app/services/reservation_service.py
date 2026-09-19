@@ -1,4 +1,5 @@
 import uuid
+import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from sqlalchemy.orm import Session
@@ -523,6 +524,34 @@ class ReservationService:
                         existing_exit.payment_status = r.payment_status
                     if not existing_exit.amount or existing_exit.amount == 0:
                         existing_exit.amount = item_amount
+
+            # If COMPLETED and payment is still PENDING, also ensure a Payment order exists in payments table
+            if target_status == ReservationStatus.COMPLETED.value and r.payment_status != "PAID":
+                from app.models.payment import Payment
+                existing_p = db.query(Payment).filter(Payment.reservation_id == r.id).first()
+                if not existing_p:
+                    customer_name = r.customer.full_name if r.customer else "Cliente General"
+                    customer_email = r.customer.email if r.customer else None
+                    token = secrets.token_hex(3).upper()
+                    tot_items = sum(it.quantity for it in r.items)
+                    new_p = Payment(
+                        payment_code=f"PAY-{token}",
+                        branch_id=r.branch_id,
+                        reservation_id=r.id,
+                        customer_id=r.customer_id,
+                        customer_name=customer_name,
+                        customer_email=customer_email,
+                        concept=f"Reserva {r.reservation_code} ({tot_items} prendas)",
+                        amount=float(r.total_amount or r.total_estimated_amount),
+                        currency="EUR",
+                        payment_type=r.payment_method or "EFECTIVO",
+                        status="PENDING",
+                        reference="Pendiente en Caja",
+                        cashier_id=user.id,
+                        notes=f"Enviada a caja desde CU13. {notes}".strip(),
+                        created_at=datetime.now(timezone.utc),
+                    )
+                    db.add(new_p)
 
         # If cancelling or expiring an active reservation, restore stock and log RETURN movement if previously confirmed
         if target_status in (ReservationStatus.CANCELLED.value, ReservationStatus.EXPIRED.value) and prev_status in (ReservationStatus.PENDING.value, ReservationStatus.CONFIRMED.value):

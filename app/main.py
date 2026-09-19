@@ -45,6 +45,32 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS amount NUMERIC(10, 2);",
                 "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS paypal_order_id VARCHAR(100);",
                 "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100);",
+                """
+                CREATE TABLE IF NOT EXISTS payments (
+                    id VARCHAR(36) PRIMARY KEY,
+                    payment_code VARCHAR(30) UNIQUE NOT NULL,
+                    branch_id VARCHAR(36) NOT NULL REFERENCES branches(id),
+                    reservation_id VARCHAR(36) REFERENCES reservations(id),
+                    customer_id VARCHAR(36) REFERENCES users(id),
+                    customer_name VARCHAR(150) NOT NULL,
+                    customer_email VARCHAR(150),
+                    concept VARCHAR(255) NOT NULL,
+                    amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+                    currency VARCHAR(10) NOT NULL DEFAULT 'EUR',
+                    payment_type VARCHAR(20) NOT NULL DEFAULT 'EFECTIVO',
+                    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                    reference VARCHAR(100),
+                    paypal_order_id VARCHAR(100),
+                    paypal_capture_id VARCHAR(100),
+                    cashier_id VARCHAR(36) REFERENCES users(id),
+                    notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    paid_at TIMESTAMP WITH TIME ZONE
+                );
+                """,
+                "CREATE INDEX IF NOT EXISTS ix_payments_branch_id ON payments (branch_id);",
+                "CREATE INDEX IF NOT EXISTS ix_payments_reservation_id ON payments (reservation_id);",
+                "CREATE INDEX IF NOT EXISTS ix_payments_payment_code ON payments (payment_code);",
             ]:
                 try:
                     conn.execute(text(col_sql))
