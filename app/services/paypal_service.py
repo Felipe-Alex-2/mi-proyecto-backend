@@ -46,8 +46,8 @@ class PayPalService:
     ) -> Dict[str, Any]:
         access_token = PayPalService._get_access_token()
         curr = currency or settings.PAYPAL_CURRENCY or "EUR"
-        ret_url = return_url or f"{settings.FRONTEND_URL}/paypal-return"
-        canc_url = cancel_url or f"{settings.FRONTEND_URL}/reservations"
+        ret_url = return_url or "https://www.sandbox.paypal.com/myaccount/summary?intl=0"
+        canc_url = cancel_url or "https://www.sandbox.paypal.com/myaccount/summary?intl=0"
 
         # Sanitizar descripción a caracteres ASCII puros para evitar errores 400 de PayPal
         clean_desc = (description or "Pago de Reserva").encode("ascii", "ignore").decode("ascii").strip()

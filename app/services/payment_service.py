@@ -280,14 +280,14 @@ class PaymentService:
         concept_clean = p.concept[:120] if p.concept else f"Cobro {p.payment_code}"
 
         try:
-            # Redirigir a PayPal Sandbox para que el usuario permanezca en PayPal y no intente abrir un localhost que cause ERR_CONNECTION_REFUSED
-            sandbox_home = "https://www.sandbox.paypal.com"
+            # Redirigir al resumen de cuenta en PayPal Sandbox para que el usuario permanezca en PayPal
+            sandbox_summary = "https://www.sandbox.paypal.com/myaccount/summary?intl=0"
             paypal_result = PayPalService.create_order(
                 amount=amount_val,
                 currency=currency_val,
                 description=f"Caja {p.payment_code}: {concept_clean}",
-                return_url=sandbox_home,
-                cancel_url=sandbox_home,
+                return_url=sandbox_summary,
+                cancel_url=sandbox_summary,
                 custom_id=p.id,
             )
         except Exception as e:
