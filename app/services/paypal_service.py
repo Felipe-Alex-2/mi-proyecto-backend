@@ -42,6 +42,7 @@ class PayPalService:
         description: str = "Pago de Reserva de Prendas",
         return_url: Optional[str] = None,
         cancel_url: Optional[str] = None,
+        custom_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         access_token = PayPalService._get_access_token()
         curr = currency or settings.PAYPAL_CURRENCY or "EUR"
@@ -53,17 +54,19 @@ class PayPalService:
         if not clean_desc:
             clean_desc = "Pago de Reserva"
 
+        purchase_unit = {
+            "amount": {
+                "currency_code": curr,
+                "value": f"{amount:.2f}",
+            },
+            "description": clean_desc[:127],
+        }
+        if custom_id:
+            purchase_unit["custom_id"] = str(custom_id)[:127]
+
         order_payload = {
             "intent": "CAPTURE",
-            "purchase_units": [
-                {
-                    "amount": {
-                        "currency_code": curr,
-                        "value": f"{amount:.2f}",
-                    },
-                    "description": clean_desc[:127],
-                }
-            ],
+            "purchase_units": [purchase_unit],
             "payment_source": {
                 "paypal": {
                     "experience_context": {
@@ -109,7 +112,11 @@ class PayPalService:
             separator = "&" if "?" in approval_url else "?"
             approval_url = f"{approval_url}{separator}fundingSource=paypal"
 
-        return {"order_id": order_id, "approval_url": approval_url}
+        return {
+            "order_id": order_id,
+            "id": order_id,
+            "approval_url": approval_url,
+        }
 
     @staticmethod
     def capture_order(order_id: str) -> Dict[str, Any]:

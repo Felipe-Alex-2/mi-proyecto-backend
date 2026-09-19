@@ -1,10 +1,12 @@
 import uuid
 import secrets
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from app.config import settings
 from app.models.payment import Payment
 from app.models.reservation import Reservation, ReservationStatus
 from app.models.branch import Branch
@@ -19,6 +21,8 @@ from app.schemas.payment import (
 )
 from app.services.paypal_service import PayPalService
 from app.core.exceptions import NotFoundException, BadRequestException, ForbiddenException
+
+logger = logging.getLogger("payments")
 
 
 class PaymentService:
@@ -247,18 +251,24 @@ class PaymentService:
             raise BadRequestException(detail="Este cobro ya ha sido pagado previamente")
 
         amount_val = float(p.amount)
-        currency_val = p.currency or "EUR"
+        currency_val = p.currency or "USD"
         concept_clean = p.concept[:120] if p.concept else f"Cobro {p.payment_code}"
 
-        # Create PayPal Sandbox order
-        paypal_result = PayPalService.create_order(
-            amount=amount_val,
-            currency=currency_val,
-            description=f"Caja {p.payment_code}: {concept_clean}",
-            custom_id=p.id,
-        )
+        try:
+            # Create PayPal Sandbox order
+            paypal_result = PayPalService.create_order(
+                amount=amount_val,
+                currency=currency_val,
+                description=f"Caja {p.payment_code}: {concept_clean}",
+                return_url=f"{settings.FRONTEND_URL}/payments",
+                cancel_url=f"{settings.FRONTEND_URL}/payments",
+                custom_id=p.id,
+            )
+        except Exception as e:
+            logger.error(f"Error al generar orden en PayPal: {str(e)}")
+            raise BadRequestException(detail=f"Error al conectar con PayPal Sandbox: {str(e)}")
 
-        paypal_order_id = paypal_result["id"]
+        paypal_order_id = paypal_result.get("order_id") or paypal_result.get("id")
         approval_url = paypal_result["approval_url"]
 
         p.paypal_order_id = paypal_order_id
