@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from app.models.branch import Branch
 from app.models.product_variant import ProductVariant
 from app.models.product import Product
 from app.models.stock import Stock
+from app.models.inventory_movement import InventoryMovement, MovementType
 from app.models.user import User, UserRole
 from app.schemas.reservation import (
     ReservationCreate,
@@ -124,9 +125,8 @@ class ReservationService:
             )
             available = stock.quantity if stock else 0
             if available < item_in.quantity:
-                prod_name = variant.product.name if variant.product else "Prenda"
                 raise BadRequestException(
-                    detail=f"Stock insuficiente en '{branch.name}' para '{prod_name}'. Disponible: {available}, solicitado: {item_in.quantity}"
+                    detail="Esta sucursal no tiene stock disponible"
                 )
             variant_ids_in_reservation.append(item_in.variant_id)
 
@@ -249,11 +249,66 @@ class ReservationService:
                 )
 
         prev_status = r.status
+
+        # If transitioning to CONFIRMED or COMPLETED, automatically register EXIT movements (sales/deductions)
+        if target_status in (ReservationStatus.CONFIRMED.value, ReservationStatus.COMPLETED.value):
+            for item in r.items:
+                existing_exit = (
+                    db.query(InventoryMovement)
+                    .filter(
+                        InventoryMovement.reference_number == r.reservation_code,
+                        InventoryMovement.variant_id == item.variant_id,
+                        InventoryMovement.type == MovementType.EXIT.value,
+                    )
+                    .first()
+                )
+                if not existing_exit:
+                    stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+                    curr_qty = stk.quantity if stk else 0
+                    mov = InventoryMovement(
+                        variant_id=item.variant_id,
+                        branch_id=r.branch_id,
+                        type=MovementType.EXIT.value,
+                        quantity=item.quantity,
+                        reason=f"Venta por reserva confirmada ({r.reservation_code})",
+                        reference_number=r.reservation_code,
+                        previous_stock=curr_qty + item.quantity,
+                        new_stock=curr_qty,
+                        user_id=user.id,
+                    )
+                    db.add(mov)
+
+        # If cancelling or expiring an active reservation, restore stock and log RETURN movement if previously confirmed
         if target_status in (ReservationStatus.CANCELLED.value, ReservationStatus.EXPIRED.value) and prev_status in (ReservationStatus.PENDING.value, ReservationStatus.CONFIRMED.value):
             for item in r.items:
                 stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+                prev_qty = stk.quantity if stk else 0
                 if stk:
                     stk.quantity += item.quantity
+                new_qty = stk.quantity if stk else (prev_qty + item.quantity)
+
+                had_exit = (
+                    db.query(InventoryMovement)
+                    .filter(
+                        InventoryMovement.reference_number == r.reservation_code,
+                        InventoryMovement.variant_id == item.variant_id,
+                        InventoryMovement.type == MovementType.EXIT.value,
+                    )
+                    .first()
+                )
+                if had_exit:
+                    return_mov = InventoryMovement(
+                        variant_id=item.variant_id,
+                        branch_id=r.branch_id,
+                        type=MovementType.RETURN.value,
+                        quantity=item.quantity,
+                        reason=f"Devolución por reserva cancelada ({r.reservation_code})",
+                        reference_number=r.reservation_code,
+                        previous_stock=prev_qty,
+                        new_stock=new_qty,
+                        user_id=user.id,
+                    )
+                    db.add(return_mov)
 
         r.status = target_status
         r.staff_notes = notes if notes else None
@@ -284,8 +339,33 @@ class ReservationService:
 
         for item in r.items:
             stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+            prev_qty = stk.quantity if stk else 0
             if stk:
                 stk.quantity += item.quantity
+            new_qty = stk.quantity if stk else (prev_qty + item.quantity)
+
+            had_exit = (
+                db.query(InventoryMovement)
+                .filter(
+                    InventoryMovement.reference_number == r.reservation_code,
+                    InventoryMovement.variant_id == item.variant_id,
+                    InventoryMovement.type == MovementType.EXIT.value,
+                )
+                .first()
+            )
+            if had_exit:
+                return_mov = InventoryMovement(
+                    variant_id=item.variant_id,
+                    branch_id=r.branch_id,
+                    type=MovementType.RETURN.value,
+                    quantity=item.quantity,
+                    reason=f"Devolución por cancelación de cliente ({r.reservation_code})",
+                    reference_number=r.reservation_code,
+                    previous_stock=prev_qty,
+                    new_stock=new_qty,
+                    user_id=customer.id,
+                )
+                db.add(return_mov)
 
         r.status = ReservationStatus.CANCELLED.value
         r.staff_notes = "Cancelada voluntariamente por el cliente desde la app"

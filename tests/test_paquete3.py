@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from app.models.branch import Branch
 from app.models.category import Category
 from app.models.color import Color
@@ -6,6 +6,7 @@ from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.size import Size
 from app.models.stock import Stock
+from app.models.inventory_movement import InventoryMovement
 from app.models.user import User, UserRole
 from app.core.security import get_password_hash, create_access_token
 
@@ -238,7 +239,19 @@ def test_cu13_reservations_flow(client, db_session):
     staff, staff_token = _create_user(db_session, "cajero@test.com", UserRole.CASHIER.value, "Cajero San Miguel", branch_id=branch.id)
     staff_headers = {"Authorization": f"Bearer {staff_token}"}
 
-    # 1. Customer creates reservation
+    # 1. Validation: Customer attempts reservation in branch with 0 stock
+    branch_nostock = Branch(name="Sucursal Vacía", city="Cochabamba", address="Av. Heroínas 10")
+    db_session.add(branch_nostock)
+    db_session.commit()
+    res_err = client.post(
+        "/api/v1/reservations",
+        json={"branch_id": branch_nostock.id, "items": [{"variant_id": variant.id, "quantity": 1}]},
+        headers=cust_headers,
+    )
+    assert res_err.status_code == 400
+    assert res_err.json()["detail"] == "Esta sucursal no tiene stock disponible"
+
+    # 2. Customer creates reservation in branch with stock
     res_payload = {
         "branch_id": branch.id,
         "items": [{"variant_id": variant.id, "quantity": 1}],
@@ -251,12 +264,12 @@ def test_cu13_reservations_flow(client, db_session):
     assert res_data["reservation_code"].startswith("RSV-")
     reservation_id = res_data["id"]
 
-    # 2. Customer lists own reservations
+    # 3. Customer lists own reservations
     list_res = client.get("/api/v1/reservations", headers=cust_headers)
     assert list_res.status_code == 200
     assert len(list_res.json()) == 1
 
-    # 3. Staff updates status to COMPLETED with note
+    # 4. Staff updates status to COMPLETED with note
     upd_res = client.patch(
         f"/api/v1/reservations/{reservation_id}/status",
         json={"status": "COMPLETED", "staff_notes": "Cliente probó la prenda y realizó la compra"},
@@ -265,7 +278,18 @@ def test_cu13_reservations_flow(client, db_session):
     assert upd_res.status_code == 200
     assert upd_res.json()["status"] == "COMPLETED"
 
-    # 4. Check stats (Admin)
+    # Verify that InventoryMovement was automatically created for this reservation
+    mov = (
+        db_session.query(InventoryMovement)
+        .filter(InventoryMovement.reference_number == res_data["reservation_code"])
+        .first()
+    )
+    assert mov is not None
+    assert mov.type == "EXIT"
+    assert mov.quantity == 1
+    assert "Venta por reserva confirmada" in mov.reason
+
+    # 5. Check stats (Admin)
     admin, admin_token = _create_user(db_session, "admin_stats@test.com", UserRole.ADMIN.value, "Admin Stats")
     adm_headers = {"Authorization": f"Bearer {admin_token}"}
     stats_res = client.get("/api/v1/reservations/stats", headers=adm_headers)
