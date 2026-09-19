@@ -31,6 +31,25 @@ async def lifespan(app: FastAPI):
                 conn.execute(text("ALTER TABLE products ALTER COLUMN image_url TYPE TEXT;"))
             except Exception:
                 pass
+            
+            # Auto-migrate reservations payment fields
+            for col_sql in [
+                "ALTER TABLE reservations ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50) DEFAULT 'EFECTIVO';",
+                "ALTER TABLE reservations ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'PENDING';",
+                "ALTER TABLE reservations ADD COLUMN IF NOT EXISTS paypal_order_id VARCHAR(100);",
+                "ALTER TABLE reservations ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100);",
+                "ALTER TABLE reservations ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP;",
+                "ALTER TABLE reservations ADD COLUMN IF NOT EXISTS total_amount NUMERIC(10, 2);",
+                "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50);",
+                "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'PENDING';",
+                "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS amount NUMERIC(10, 2);",
+                "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS paypal_order_id VARCHAR(100);",
+                "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS paypal_capture_id VARCHAR(100);",
+            ]:
+                try:
+                    conn.execute(text(col_sql))
+                except Exception:
+                    pass
             conn.commit()
     except Exception as exc:
         logger.warning(f"Note: Database table auto-creation skipped or deferred: {exc}")

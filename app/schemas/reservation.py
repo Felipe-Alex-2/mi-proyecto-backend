@@ -13,11 +13,14 @@ class ReservationCreate(BaseModel):
     branch_id: str = Field(..., description="Sucursal donde se realizará la prueba")
     items: List[ReservationItemCreate] = Field(..., min_length=1, max_length=50, description="Prendas a reservar")
     customer_notes: Optional[str] = Field(None, max_length=500, description="Notas o comentarios del cliente")
+    payment_method: Optional[str] = Field("EFECTIVO", description="Método de pago: EFECTIVO o PAYPAL")
 
 
 class ReservationStatusUpdate(BaseModel):
     status: ReservationStatus = Field(..., description="Nuevo estado")
     staff_notes: Optional[str] = Field(None, max_length=500, description="Nota obligatoria para completar o cancelar")
+    payment_method: Optional[str] = Field(None, description="Método de pago (EFECTIVO, PAYPAL)")
+    payment_status: Optional[str] = Field(None, description="Estado de pago (PENDING, PAID)")
 
 
 class ReservationItemResponse(BaseModel):
@@ -49,6 +52,14 @@ class ReservationResponse(BaseModel):
     expires_at: datetime
     updated_at: datetime
 
+    # Payment tracking
+    payment_method: Optional[str] = "EFECTIVO"
+    payment_status: str = "PENDING"
+    paypal_order_id: Optional[str] = None
+    paypal_capture_id: Optional[str] = None
+    paid_at: Optional[datetime] = None
+    total_amount: Optional[float] = None
+
     items: List[ReservationItemResponse] = []
     customer_name: Optional[str] = None
     customer_email: Optional[str] = None
@@ -59,6 +70,31 @@ class ReservationResponse(BaseModel):
     total_estimated_amount: float = 0.0
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PayPalReservationOrderCreate(BaseModel):
+    branch_id: str = Field(..., description="Sucursal donde se retirará la reserva")
+    items: List[ReservationItemCreate] = Field(..., min_length=1, max_length=50, description="Prendas a pagar/reservar")
+    customer_notes: Optional[str] = Field(None, max_length=500, description="Notas del cliente")
+    return_url: Optional[str] = Field(None, description="URL de retorno para checkout web")
+    cancel_url: Optional[str] = Field(None, description="URL de cancelación")
+
+
+class PayPalOrderResponse(BaseModel):
+    order_id: str
+    approval_url: str
+    reservation: ReservationResponse
+
+
+class PayPalCaptureRequest(BaseModel):
+    paypal_order_id: str = Field(..., description="ID de orden emitida por PayPal")
+
+
+class PayPalCaptureResponse(BaseModel):
+    order_id: str
+    capture_id: Optional[str] = None
+    status: str
+    reservation: ReservationResponse
 
 
 class ReservationStatsResponse(BaseModel):

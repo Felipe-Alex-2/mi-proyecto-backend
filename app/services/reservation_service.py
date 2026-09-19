@@ -17,7 +17,11 @@ from app.schemas.reservation import (
     ReservationItemResponse,
     ReservationResponse,
     ReservationStatsResponse,
+    PayPalReservationOrderCreate,
+    PayPalOrderResponse,
+    PayPalCaptureResponse,
 )
+from app.services.paypal_service import PayPalService
 from app.core.exceptions import (
     BadRequestException,
     NotFoundException,
@@ -66,6 +70,12 @@ class ReservationService:
             created_at=r.created_at,
             expires_at=r.expires_at,
             updated_at=r.updated_at,
+            payment_method=r.payment_method or "EFECTIVO",
+            payment_status=r.payment_status or "PENDING",
+            paypal_order_id=r.paypal_order_id,
+            paypal_capture_id=r.paypal_capture_id,
+            paid_at=r.paid_at,
+            total_amount=float(r.total_amount) if r.total_amount is not None else round(total_estimated, 2),
             items=items_resp,
             customer_name=r.customer.full_name if r.customer else None,
             customer_email=r.customer.email if r.customer else None,
@@ -140,12 +150,22 @@ class ReservationService:
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(hours=48)
 
+        # Calculate estimated total amount
+        total_estimated = 0.0
+        for item_in in data.items:
+            v = db.query(ProductVariant).filter(ProductVariant.id == item_in.variant_id).first()
+            if v and v.product and v.product.price:
+                total_estimated += float(v.product.price) * item_in.quantity
+
         reservation = Reservation(
             reservation_code=code,
             customer_id=customer.id,
             branch_id=data.branch_id,
             status=ReservationStatus.PENDING.value,
             customer_notes=data.customer_notes.strip() if data.customer_notes else None,
+            payment_method=data.payment_method or "EFECTIVO",
+            payment_status="PENDING",
+            total_amount=round(total_estimated, 2),
             created_at=now,
             expires_at=expires_at,
         )
@@ -179,6 +199,203 @@ class ReservationService:
         db.refresh(reservation)
 
         return cls._enrich_reservation(reservation)
+
+    @classmethod
+    def create_paypal_order(
+        cls,
+        db: Session,
+        customer: User,
+        data: PayPalReservationOrderCreate,
+    ) -> PayPalOrderResponse:
+        # Check active reservations count
+        active_count = (
+            db.query(Reservation)
+            .filter(
+                Reservation.customer_id == customer.id,
+                Reservation.status.in_([ReservationStatus.PENDING.value, ReservationStatus.CONFIRMED.value]),
+            )
+            .count()
+        )
+        if active_count >= 5:
+            raise BadRequestException(
+                detail="Límite alcanzado: no puedes tener más de 5 reservas activas simultáneamente"
+            )
+
+        branch = db.query(Branch).filter(Branch.id == data.branch_id).first()
+        if not branch:
+            raise NotFoundException(detail="Sucursal no encontrada")
+        if not branch.is_active:
+            raise BadRequestException(detail="La sucursal seleccionada no está activa")
+
+        if not data.items:
+            raise BadRequestException(detail="Debes seleccionar al menos una prenda para la reserva")
+
+        # Validate stock availability in branch and calculate total amount
+        total_amount = 0.0
+        variant_ids_in_reservation = []
+        for item_in in data.items:
+            variant = db.query(ProductVariant).filter(ProductVariant.id == item_in.variant_id).first()
+            if not variant:
+                raise NotFoundException(detail=f"Variante {item_in.variant_id} no encontrada")
+            if variant.product and not variant.product.is_active:
+                raise BadRequestException(
+                    detail=f"El producto '{variant.product.name}' no está disponible actualmente"
+                )
+
+            stock = (
+                db.query(Stock)
+                .filter(Stock.variant_id == item_in.variant_id, Stock.branch_id == data.branch_id)
+                .first()
+            )
+            available = stock.quantity if stock else 0
+            prod_name = variant.product.name if variant.product else "esta prenda"
+            if available == 0:
+                raise BadRequestException(
+                    detail=f"En esta sucursal no hay stock de esta prenda ({prod_name})"
+                )
+            if available < item_in.quantity:
+                raise BadRequestException(
+                    detail=f"Esta sucursal no tiene stock suficiente para {prod_name}. Disponible: {available}, solicitado: {item_in.quantity}"
+                )
+            price = float(variant.product.price) if (variant.product and variant.product.price is not None) else 0.0
+            total_amount += price * item_in.quantity
+            variant_ids_in_reservation.append(item_in.variant_id)
+
+        code = f"RSV-{uuid.uuid4().hex[:6].upper()}"
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(hours=48)
+
+        # Call PayPal REST API to create checkout order
+        paypal_result = PayPalService.create_order(
+            amount=total_amount,
+            description=f"Pago de Reserva {code} en {branch.name}",
+            return_url=data.return_url,
+            cancel_url=data.cancel_url,
+        )
+        paypal_order_id = paypal_result["order_id"]
+        approval_url = paypal_result["approval_url"]
+
+        reservation = Reservation(
+            reservation_code=code,
+            customer_id=customer.id,
+            branch_id=data.branch_id,
+            status=ReservationStatus.PENDING.value,
+            customer_notes=data.customer_notes.strip() if data.customer_notes else None,
+            payment_method="PAYPAL",
+            payment_status="PENDING",
+            paypal_order_id=paypal_order_id,
+            total_amount=round(total_amount, 2),
+            created_at=now,
+            expires_at=expires_at,
+        )
+        db.add(reservation)
+        db.flush()
+
+        for item_in in data.items:
+            stock = (
+                db.query(Stock)
+                .filter(Stock.variant_id == item_in.variant_id, Stock.branch_id == data.branch_id)
+                .first()
+            )
+            if stock:
+                stock.quantity = max(0, stock.quantity - item_in.quantity)
+
+            res_item = ReservationItem(
+                reservation_id=reservation.id,
+                variant_id=item_in.variant_id,
+                quantity=item_in.quantity,
+            )
+            db.add(res_item)
+
+        if variant_ids_in_reservation:
+            db.query(CartItem).filter(
+                CartItem.user_id == customer.id,
+                CartItem.variant_id.in_(variant_ids_in_reservation),
+            ).delete(synchronize_session=False)
+
+        db.commit()
+        db.refresh(reservation)
+
+        return PayPalOrderResponse(
+            order_id=paypal_order_id,
+            approval_url=approval_url,
+            reservation=cls._enrich_reservation(reservation),
+        )
+
+    @classmethod
+    def capture_paypal_order(
+        cls,
+        db: Session,
+        user: User,
+        paypal_order_id: str,
+    ) -> PayPalCaptureResponse:
+        r = db.query(Reservation).filter(Reservation.paypal_order_id == paypal_order_id).first()
+        if not r:
+            raise NotFoundException(detail="No se encontró ninguna reserva asociada a esta orden de PayPal")
+
+        # Idempotent check: if already PAID, return immediately
+        if r.payment_status == "PAID":
+            return PayPalCaptureResponse(
+                order_id=paypal_order_id,
+                capture_id=r.paypal_capture_id,
+                status="COMPLETED",
+                reservation=cls._enrich_reservation(r),
+            )
+
+        # Call PayPal REST API to capture funds
+        capture_data = PayPalService.capture_order(paypal_order_id)
+        capture_status = capture_data.get("status", "UNKNOWN")
+        capture_id = capture_data.get("capture_id")
+
+        if capture_status in ("COMPLETED", "APPROVED"):
+            r.payment_status = "PAID"
+            r.status = ReservationStatus.CONFIRMED.value
+            r.paypal_capture_id = capture_id
+            r.paid_at = datetime.now(timezone.utc)
+
+            # Auto-register EXIT movement in inventory for confirmed and paid reservation
+            for item in r.items:
+                existing_exit = (
+                    db.query(InventoryMovement)
+                    .filter(
+                        InventoryMovement.reference_number == r.reservation_code,
+                        InventoryMovement.variant_id == item.variant_id,
+                        InventoryMovement.type == MovementType.EXIT.value,
+                    )
+                    .first()
+                )
+                if not existing_exit:
+                    stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+                    curr_qty = stk.quantity if stk else 0
+                    v = item.variant
+                    item_price = float(v.product.price) if (v and v.product and v.product.price) else 0.0
+                    mov = InventoryMovement(
+                        variant_id=item.variant_id,
+                        branch_id=r.branch_id,
+                        type=MovementType.EXIT.value,
+                        quantity=item.quantity,
+                        reason=f"Venta pagada con PayPal por reserva ({r.reservation_code})",
+                        reference_number=r.reservation_code,
+                        previous_stock=curr_qty + item.quantity,
+                        new_stock=curr_qty,
+                        user_id=r.customer_id,
+                        payment_method="PAYPAL",
+                        payment_status="PAID",
+                        amount=round(item_price * item.quantity, 2),
+                        paypal_order_id=paypal_order_id,
+                        paypal_capture_id=capture_id,
+                    )
+                    db.add(mov)
+
+            db.commit()
+            db.refresh(r)
+
+        return PayPalCaptureResponse(
+            order_id=paypal_order_id,
+            capture_id=capture_id,
+            status=capture_status,
+            reservation=cls._enrich_reservation(r),
+        )
 
     @classmethod
     def list_reservations(
@@ -255,9 +472,21 @@ class ReservationService:
 
         prev_status = r.status
 
-        # If transitioning to CONFIRMED or COMPLETED, automatically register EXIT movements (sales/deductions)
+        # Update payment method and status if provided
+        if data.payment_method:
+            r.payment_method = data.payment_method
+        if data.payment_status:
+            r.payment_status = data.payment_status
+            if data.payment_status == "PAID" and not r.paid_at:
+                r.paid_at = datetime.now(timezone.utc)
+
+        # If transitioning to CONFIRMED or COMPLETED, automatically register or update EXIT movements (sales/deductions)
         if target_status in (ReservationStatus.CONFIRMED.value, ReservationStatus.COMPLETED.value):
             for item in r.items:
+                v = item.variant
+                item_price = float(v.product.price) if (v and v.product and v.product.price) else 0.0
+                item_amount = round(item_price * item.quantity, 2)
+
                 existing_exit = (
                     db.query(InventoryMovement)
                     .filter(
@@ -280,8 +509,20 @@ class ReservationService:
                         previous_stock=curr_qty + item.quantity,
                         new_stock=curr_qty,
                         user_id=user.id,
+                        payment_method=r.payment_method or "EFECTIVO",
+                        payment_status=r.payment_status or "PENDING",
+                        amount=item_amount,
+                        paypal_order_id=r.paypal_order_id,
+                        paypal_capture_id=r.paypal_capture_id,
                     )
                     db.add(mov)
+                else:
+                    if r.payment_method:
+                        existing_exit.payment_method = r.payment_method
+                    if r.payment_status:
+                        existing_exit.payment_status = r.payment_status
+                    if not existing_exit.amount or existing_exit.amount == 0:
+                        existing_exit.amount = item_amount
 
         # If cancelling or expiring an active reservation, restore stock and log RETURN movement if previously confirmed
         if target_status in (ReservationStatus.CANCELLED.value, ReservationStatus.EXPIRED.value) and prev_status in (ReservationStatus.PENDING.value, ReservationStatus.CONFIRMED.value):
