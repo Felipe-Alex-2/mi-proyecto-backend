@@ -1,8 +1,11 @@
 import uuid
 import secrets
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger("reservations")
 from app.models.reservation import Reservation, ReservationStatus
 from app.models.reservation_item import ReservationItem
 from app.models.cart_item import CartItem
