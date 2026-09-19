@@ -24,6 +24,7 @@ class Payment(Base):
     paypal_order_id = Column(String(100), nullable=True, index=True)
     paypal_capture_id = Column(String(100), nullable=True)
     cashier_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    items_detail = Column(Text, nullable=True)  # JSON serialization of items: [{variant_id, quantity, unit_price, subtotal, product_name, size, color, sku}]
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     paid_at = Column(DateTime(timezone=True), nullable=True)

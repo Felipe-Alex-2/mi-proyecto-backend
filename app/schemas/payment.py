@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -13,9 +13,21 @@ class PaymentBase(BaseModel):
     notes: Optional[str] = Field(None, description="Notas adicionales")
 
 
+class PaymentItemCreate(BaseModel):
+    variant_id: str = Field(..., description="ID de la variante de producto")
+    quantity: int = Field(..., gt=0, description="Cantidad a vender")
+    unit_price: float = Field(..., ge=0, description="Precio unitario")
+    subtotal: Optional[float] = Field(None, description="Subtotal de la línea")
+    product_name: Optional[str] = Field(None, description="Nombre del producto")
+    sku: Optional[str] = Field(None, description="SKU de la variante")
+    size: Optional[str] = Field(None, description="Talla")
+    color: Optional[str] = Field(None, description="Color")
+
+
 class PaymentCreate(PaymentBase):
     branch_id: str = Field(..., description="ID de la sucursal de cobro")
     reservation_id: Optional[str] = Field(None, description="ID de la reserva vinculada si aplica")
+    items: Optional[List[PaymentItemCreate]] = Field(None, description="Detalle de productos vendidos en caja")
 
 
 class PaymentProcess(BaseModel):
@@ -43,6 +55,8 @@ class PaymentResponse(BaseModel):
     paypal_capture_id: Optional[str] = None
     cashier_id: Optional[str] = None
     cashier_name: Optional[str] = None
+    items_detail: Optional[str] = None
+    items: Optional[List[Dict[str, Any]]] = None
     notes: Optional[str] = None
     created_at: datetime
     paid_at: Optional[datetime] = None

@@ -183,3 +183,81 @@ def test_pos_paypal_checkout_flow(client, admin_token, db_session):
         assert data["status"] == "PAID"
         assert data["payment_type"] == "PAYPAL"
         assert data["paypal_capture_id"] == "CAPTURE-POS-999"
+
+
+def test_pos_direct_sale_with_items_and_invoice_pdf(client, admin_token, db_session):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    branch, customer, variant = _setup_catalog(db_session)
+
+    # Variant initial stock is 20
+    stock_before = db_session.query(Stock).filter(Stock.variant_id == variant.id, Stock.branch_id == branch.id).first()
+    assert stock_before.quantity == 20
+
+    # 1. Create direct sale with item list
+    resp_create = client.post(
+        "/api/v1/payments",
+        json={
+            "branch_id": branch.id,
+            "customer_name": "Ana Lopez",
+            "customer_email": "ana@example.com",
+            "concept": "Venta en caja",
+            "amount": 0.01,  # will be auto-calculated from items
+            "currency": "USD",
+            "payment_type": "EFECTIVO",
+            "items": [
+                {
+                    "variant_id": variant.id,
+                    "product_name": "Camisa POS Elegante",
+                    "sku": variant.sku,
+                    "size": "M",
+                    "color": "Negro",
+                    "quantity": 5,
+                    "unit_price": 20.0,
+                    "subtotal": 100.0,
+                }
+            ],
+        },
+        headers=headers,
+    )
+    assert resp_create.status_code == 201
+    created_payment = resp_create.json()
+    assert created_payment["amount"] == 100.0
+    assert "5x Camisa POS Elegante" in created_payment["concept"]
+    assert created_payment["status"] == "PENDING"
+    payment_id = created_payment["id"]
+
+    # 2. Process cash payment
+    resp_pay = client.post(
+        f"/api/v1/payments/{payment_id}/cash",
+        json={"notes": "Pagado con 100 USD en efectivo"},
+        headers=headers,
+    )
+    assert resp_pay.status_code == 200
+    paid_payment = resp_pay.json()
+    assert paid_payment["status"] == "PAID"
+
+    # 3. Verify stock was deducted from 20 to 15
+    db_session.expire_all()
+    stock_after = db_session.query(Stock).filter(Stock.variant_id == variant.id, Stock.branch_id == branch.id).first()
+    assert stock_after.quantity == 15
+
+    # 4. Verify inventory movement EXIT was recorded (CU09)
+    mov = db_session.query(InventoryMovement).filter(
+        InventoryMovement.reference_number == paid_payment["payment_code"],
+        InventoryMovement.type == MovementType.EXIT.value,
+    ).first()
+    assert mov is not None
+    assert mov.quantity == 5
+    assert mov.payment_status == "PAID"
+    assert mov.amount == 100.0
+
+    # 5. Download Invoice PDF
+    resp_pdf = client.get(
+        f"/api/v1/payments/{payment_id}/invoice-pdf",
+        headers=headers,
+    )
+    assert resp_pdf.status_code == 200
+    assert resp_pdf.headers["content-type"] == "application/pdf"
+    assert resp_pdf.content.startswith(b"%PDF")
+    assert len(resp_pdf.content) > 1000
+

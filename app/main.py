@@ -63,11 +63,13 @@ async def lifespan(app: FastAPI):
                     paypal_order_id VARCHAR(100),
                     paypal_capture_id VARCHAR(100),
                     cashier_id VARCHAR(36) REFERENCES users(id),
+                    items_detail TEXT,
                     notes TEXT,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     paid_at TIMESTAMP WITH TIME ZONE
                 );
                 """,
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS items_detail TEXT;",
                 "CREATE INDEX IF NOT EXISTS ix_payments_branch_id ON payments (branch_id);",
                 "CREATE INDEX IF NOT EXISTS ix_payments_reservation_id ON payments (reservation_id);",
                 "CREATE INDEX IF NOT EXISTS ix_payments_payment_code ON payments (payment_code);",

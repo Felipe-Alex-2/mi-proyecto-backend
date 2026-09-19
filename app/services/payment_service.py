@@ -43,6 +43,14 @@ class PaymentService:
         res_code = p.reservation.reservation_code if p.reservation else None
         cashier_name = p.cashier.full_name if p.cashier else None
 
+        parsed_items = None
+        if p.items_detail:
+            try:
+                import json
+                parsed_items = json.loads(p.items_detail)
+            except Exception:
+                parsed_items = None
+
         return PaymentResponse(
             id=p.id,
             payment_code=p.payment_code,
@@ -63,6 +71,8 @@ class PaymentService:
             paypal_capture_id=p.paypal_capture_id,
             cashier_id=p.cashier_id,
             cashier_name=cashier_name,
+            items_detail=p.items_detail,
+            items=parsed_items,
             notes=p.notes,
             created_at=p.created_at,
             paid_at=p.paid_at,
@@ -142,6 +152,72 @@ class PaymentService:
         return cls._enrich_payment(p)
 
     @classmethod
+    def _deduct_direct_sale_stock(
+        cls,
+        db: Session,
+        p: Payment,
+        user_id: Optional[str],
+        now: datetime,
+    ) -> None:
+        if not p.items_detail:
+            return
+
+        import json
+        try:
+            sale_items = json.loads(p.items_detail)
+        except Exception:
+            sale_items = []
+
+        for item in sale_items:
+            var_id = item.get("variant_id")
+            if not var_id:
+                continue
+            qty = int(item.get("quantity", 1))
+            item_amt = float(item.get("subtotal") or (qty * float(item.get("unit_price", 0))))
+
+            stk = db.query(Stock).filter(
+                Stock.variant_id == var_id,
+                Stock.branch_id == p.branch_id,
+            ).first()
+
+            prev_qty = stk.quantity if stk else 0
+            new_qty = max(0, prev_qty - qty)
+            if stk:
+                stk.quantity = new_qty
+                stk.updated_at = now
+
+            existing_exit = db.query(InventoryMovement).filter(
+                InventoryMovement.reference_number == p.payment_code,
+                InventoryMovement.variant_id == var_id,
+                InventoryMovement.type == MovementType.EXIT.value,
+            ).first()
+
+            p_name = item.get("product_name") or "Prenda"
+            if not existing_exit:
+                mov = InventoryMovement(
+                    variant_id=var_id,
+                    branch_id=p.branch_id,
+                    type=MovementType.EXIT.value,
+                    quantity=qty,
+                    reason=f"Venta directa en caja ({p.payment_code}): {p_name}",
+                    reference_number=p.payment_code,
+                    previous_stock=prev_qty,
+                    new_stock=new_qty,
+                    user_id=user_id or p.cashier_id,
+                    payment_method=p.payment_type,
+                    payment_status="PAID",
+                    amount=item_amt,
+                    paypal_order_id=p.paypal_order_id,
+                    paypal_capture_id=p.paypal_capture_id,
+                )
+                db.add(mov)
+            else:
+                existing_exit.payment_method = p.payment_type
+                existing_exit.payment_status = "PAID"
+                if not existing_exit.amount or existing_exit.amount == 0:
+                    existing_exit.amount = item_amt
+
+    @classmethod
     def create_payment(
         cls,
         db: Session,
@@ -160,6 +236,45 @@ class PaymentService:
                 if not data.customer_name and r.customer:
                     data.customer_name = r.customer.full_name
 
+        items_json_str = None
+        amount_final = round(data.amount, 2)
+        concept_final = data.concept.strip()
+
+        # Handle direct sale items with branch stock validation and total calculation
+        if data.items and len(data.items) > 0:
+            import json
+            items_list_dict = []
+            calc_amount = 0.0
+            concept_parts = []
+            for itm in data.items:
+                stk = db.query(Stock).filter(
+                    Stock.variant_id == itm.variant_id,
+                    Stock.branch_id == data.branch_id,
+                ).first()
+                curr_stock = stk.quantity if stk else 0
+                if itm.quantity > curr_stock:
+                    raise BadRequestException(
+                        detail=f"Stock insuficiente para {itm.product_name or 'producto'}: disponible {curr_stock}, solicitado {itm.quantity}"
+                    )
+                line_subtotal = round(itm.quantity * itm.unit_price, 2)
+                calc_amount += line_subtotal
+                concept_parts.append(f"{itm.quantity}x {itm.product_name or 'Prenda'}")
+                items_list_dict.append({
+                    "variant_id": itm.variant_id,
+                    "product_name": itm.product_name or "Prenda",
+                    "sku": itm.sku or "",
+                    "size": itm.size or "",
+                    "color": itm.color or "",
+                    "quantity": itm.quantity,
+                    "unit_price": round(itm.unit_price, 2),
+                    "subtotal": line_subtotal,
+                })
+            items_json_str = json.dumps(items_list_dict)
+            if calc_amount > 0:
+                amount_final = round(calc_amount, 2)
+            if concept_parts:
+                concept_final = f"Venta: {', '.join(concept_parts)}"[:255]
+
         payment = Payment(
             payment_code=cls._generate_code(db),
             branch_id=data.branch_id,
@@ -167,13 +282,14 @@ class PaymentService:
             customer_id=customer_id,
             customer_name=data.customer_name.strip(),
             customer_email=data.customer_email.strip() if data.customer_email else None,
-            concept=data.concept.strip(),
-            amount=round(data.amount, 2),
+            concept=concept_final,
+            amount=amount_final,
             currency=data.currency or "EUR",
             payment_type=data.payment_type or "EFECTIVO",
             status="PENDING",
             reference="Pendiente en Caja",
             cashier_id=user.id,
+            items_detail=items_json_str,
             notes=data.notes.strip() if data.notes else None,
             created_at=datetime.now(timezone.utc),
         )
@@ -256,6 +372,9 @@ class PaymentService:
                         existing_exit.payment_status = "PAID"
                         if not existing_exit.amount or existing_exit.amount == 0:
                             existing_exit.amount = item_amount
+
+        # If direct sale with items, deduct stock in branch and register EXIT movements (CU09)
+        cls._deduct_direct_sale_stock(db=db, p=p, user_id=user.id, now=now)
 
         db.commit()
         db.refresh(p)
@@ -434,6 +553,9 @@ class PaymentService:
                             existing_exit.paypal_capture_id = capture_id
                             if not existing_exit.amount or existing_exit.amount == 0:
                                 existing_exit.amount = item_amount
+
+            # If direct sale with items, deduct stock in branch and register EXIT movements (CU09)
+            cls._deduct_direct_sale_stock(db=db, p=p, user_id=user.id if user else None, now=now)
 
             db.commit()
             db.refresh(p)

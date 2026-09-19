@@ -141,3 +141,33 @@ def public_capture_paypal_order(
     """
     return PaymentService.capture_paypal_by_order_id(db=db, paypal_order_id=order_id)
 
+
+@router.get("/{payment_id}/invoice-pdf")
+def get_payment_invoice_pdf(
+    payment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Genera y descarga la factura oficial en formato PDF para una orden de cobro.
+    """
+    from fastapi import Response
+    from app.services.invoice_service import InvoiceService
+    from app.models.payment import Payment
+    from app.core.exceptions import NotFoundException
+
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if not payment:
+        raise NotFoundException(detail="Cobro no encontrado")
+
+    pdf_bytes = InvoiceService.generate_invoice_pdf(payment)
+    filename = f"factura_{payment.payment_code}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
