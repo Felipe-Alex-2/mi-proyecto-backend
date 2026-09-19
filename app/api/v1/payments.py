@@ -128,3 +128,16 @@ def capture_paypal_payment(
         payment_id=payment_id,
         paypal_order_id=order_id,
     )
+
+
+@router.post("/public-capture", response_model=PaymentResponse)
+def public_capture_paypal_order(
+    order_id: str = Query(..., description="ID de la orden de PayPal"),
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint público para confirmar/capturar un cobro completado en PayPal Sandbox
+    desde la página de retorno del navegador sin requerir sesión iniciada.
+    """
+    return PaymentService.capture_paypal_by_order_id(db=db, paypal_order_id=order_id)
+

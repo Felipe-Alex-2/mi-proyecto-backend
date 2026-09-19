@@ -151,3 +151,22 @@ class PayPalService:
             "status": status,
             "raw": data,
         }
+
+    @staticmethod
+    def get_order(order_id: str) -> Dict[str, Any]:
+        """Consulta el estado actual de una orden en PayPal Sandbox / Live."""
+        try:
+            access_token = PayPalService._get_access_token()
+            response = httpx.get(
+                f"{settings.PAYPAL_BASE_URL}/v2/checkout/orders/{order_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=20.0,
+            )
+            if response.status_code != 200:
+                logger.warning(f"No se pudo consultar orden PayPal {order_id}: {response.status_code}")
+                return {"status": "UNKNOWN"}
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error consultando orden PayPal {order_id}: {str(e)}")
+            return {"status": "UNKNOWN"}
+

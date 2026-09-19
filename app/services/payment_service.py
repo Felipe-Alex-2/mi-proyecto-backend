@@ -81,6 +81,32 @@ class PaymentService:
         offset: int = 0,
     ) -> List[PaymentResponse]:
         user_role = user.role.value if hasattr(user.role, "value") else str(user.role)
+
+        # Auto-sync pending PayPal payments with Sandbox
+        pending_paypal_q = db.query(Payment).filter(
+            Payment.status == "PENDING",
+            Payment.payment_type == "PAYPAL",
+            Payment.paypal_order_id.isnot(None),
+        )
+        if user_role in (UserRole.STORE_MANAGER.value, UserRole.CASHIER.value) and user.branch_id:
+            pending_paypal_q = pending_paypal_q.filter(Payment.branch_id == user.branch_id)
+        elif branch_id:
+            pending_paypal_q = pending_paypal_q.filter(Payment.branch_id == branch_id)
+
+        for p_pend in pending_paypal_q.limit(10).all():
+            try:
+                order_info = PayPalService.get_order(p_pend.paypal_order_id)
+                st = order_info.get("status")
+                if st in ("APPROVED", "COMPLETED"):
+                    cls.capture_paypal_payment(
+                        db=db,
+                        user=user,
+                        payment_id=p_pend.id,
+                        paypal_order_id=p_pend.paypal_order_id,
+                    )
+            except Exception as ex:
+                logger.warning(f"Auto-sync PayPal order {p_pend.paypal_order_id} falló: {str(ex)}")
+
         query = db.query(Payment)
 
         if user_role in (UserRole.STORE_MANAGER.value, UserRole.CASHIER.value):
@@ -255,13 +281,13 @@ class PaymentService:
         concept_clean = p.concept[:120] if p.concept else f"Cobro {p.payment_code}"
 
         try:
-            # Create PayPal Sandbox order
+            # Create PayPal Sandbox order with public return-url
             paypal_result = PayPalService.create_order(
                 amount=amount_val,
                 currency=currency_val,
                 description=f"Caja {p.payment_code}: {concept_clean}",
-                return_url=f"{settings.FRONTEND_URL}/payments",
-                cancel_url=f"{settings.FRONTEND_URL}/payments",
+                return_url=f"{settings.FRONTEND_URL}/paypal-return?source=pos",
+                cancel_url=f"{settings.FRONTEND_URL}/paypal-return?source=pos&cancelled=true",
                 custom_id=p.id,
             )
         except Exception as e:
@@ -286,10 +312,17 @@ class PaymentService:
         )
 
     @classmethod
+    def capture_paypal_by_order_id(cls, db: Session, paypal_order_id: str) -> PaymentResponse:
+        p = db.query(Payment).filter(Payment.paypal_order_id == paypal_order_id).first()
+        if not p:
+            raise NotFoundException(detail="No se encontró ningún cobro para esta orden de PayPal")
+        return cls.capture_paypal_payment(db=db, user=None, payment_id=p.id, paypal_order_id=paypal_order_id)
+
+    @classmethod
     def capture_paypal_payment(
         cls,
         db: Session,
-        user: User,
+        user: Optional[User],
         payment_id: str,
         paypal_order_id: str,
     ) -> PaymentResponse:
@@ -300,10 +333,40 @@ class PaymentService:
         if p.status == "PAID":
             return cls._enrich_payment(p)
 
-        # Capture via PayPal REST API
-        capture_data = PayPalService.capture_order(paypal_order_id)
-        capture_status = capture_data.get("status", "UNKNOWN")
-        capture_id = capture_data.get("capture_id")
+        # Check PayPal order status first
+        order_info = PayPalService.get_order(paypal_order_id)
+        current_paypal_status = order_info.get("status")
+        capture_id = None
+        capture_status = "UNKNOWN"
+
+        if current_paypal_status == "COMPLETED":
+            capture_status = "COMPLETED"
+            pu = order_info.get("purchase_units", [])
+            if pu:
+                captures = pu[0].get("payments", {}).get("captures", [])
+                if captures:
+                    capture_id = captures[0].get("id")
+        elif current_paypal_status in ("APPROVED", "SAVED"):
+            try:
+                capture_data = PayPalService.capture_order(paypal_order_id)
+                capture_status = capture_data.get("status", "UNKNOWN")
+                capture_id = capture_data.get("capture_id")
+            except Exception as e:
+                if "ORDER_ALREADY_CAPTURED" in str(e):
+                    capture_status = "COMPLETED"
+                else:
+                    raise e
+        else:
+            # Try capturing
+            try:
+                capture_data = PayPalService.capture_order(paypal_order_id)
+                capture_status = capture_data.get("status", "UNKNOWN")
+                capture_id = capture_data.get("capture_id")
+            except Exception as e:
+                if "ORDER_ALREADY_CAPTURED" in str(e):
+                    capture_status = "COMPLETED"
+                else:
+                    raise e
 
         if capture_status in ("COMPLETED", "APPROVED"):
             now = datetime.now(timezone.utc)
@@ -312,7 +375,8 @@ class PaymentService:
             p.paypal_order_id = paypal_order_id
             p.paypal_capture_id = capture_id
             p.reference = capture_id or paypal_order_id
-            p.cashier_id = user.id
+            if user:
+                p.cashier_id = user.id
             p.paid_at = now
 
             # If linked to a reservation, complete it and register EXIT movements in inventory
