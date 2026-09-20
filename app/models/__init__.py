@@ -15,6 +15,7 @@ from app.models.inventory_movement import InventoryMovement, MovementType
 from app.models.cart_item import CartItem
 from app.models.reservation import Reservation, ReservationStatus
 from app.models.reservation_item import ReservationItem
+from app.models.activity_log import ActivityLog
 
 __all__ = [
     "Base",
@@ -37,4 +38,5 @@ __all__ = [
     "Reservation",
     "ReservationStatus",
     "ReservationItem",
+    "ActivityLog",
 ]

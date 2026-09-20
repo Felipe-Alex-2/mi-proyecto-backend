@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -15,6 +15,8 @@ from app.schemas.user import UserResponse
 from app.schemas.common import MessageResponse
 from app.services.auth_service import AuthService
 from app.api.deps import get_current_user, security_bearer
+from app.schemas.activity_log import ActivityLogCreate
+from app.services.activity_log_service import ActivityLogService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -38,8 +40,18 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     summary="Authenticate and get JWT tokens",
     description="Validates email and password, returning access and refresh JWT tokens.",
 )
-def login(request: LoginRequest, db: Session = Depends(get_db)):
+def login(request: LoginRequest, http_request: Request, db: Session = Depends(get_db)):
     user = AuthService.authenticate(db, request)
+    ActivityLogService.create(
+        db=db,
+        user=user,
+        payload=ActivityLogCreate(
+            action="LOGIN",
+            description="Inicio de sesión exitoso",
+            category="SEGURIDAD",
+        ),
+        request=http_request,
+    )
     return AuthService.create_tokens_for_user(user)
 
 
@@ -67,6 +79,15 @@ def logout(
     db: Session = Depends(get_db),
 ):
     AuthService.blacklist_token(db, credentials.credentials)
+    ActivityLogService.create(
+        db=db,
+        user=current_user,
+        payload=ActivityLogCreate(
+            action="LOGOUT",
+            description="Cierre de sesión",
+            category="SEGURIDAD",
+        ),
+    )
     return MessageResponse(message="Successfully logged out")
 
 

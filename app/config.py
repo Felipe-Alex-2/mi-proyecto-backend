@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # Gemini reports
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.6-flash"
+    GEMINI_FALLBACK_MODEL: str = "gemini-flash-latest"
 
     # SMTP (Gmail)
     SMTP_HOST: str = "smtp.gmail.com"

@@ -2,12 +2,11 @@ import json
 import re
 from typing import Any, Dict
 
-import httpx
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.core.exceptions import BadRequestException
 from app.schemas.report import ReportRequest, ReportResponse
+from app.services.gemini_client import GeminiClient
 from app.services.report_service import ReportService
 
 
@@ -26,9 +25,6 @@ class GeminiReportService:
 
     @classmethod
     def interpret(cls, transcript: str) -> ReportRequest:
-        if not settings.GEMINI_API_KEY:
-            raise BadRequestException(detail="GEMINI_API_KEY no está configurada en el backend")
-
         prompt = f"""
 Eres un traductor de consultas para reportes empresariales de una tienda de ropa.
 No respondas con explicaciones. Devuelve únicamente JSON válido, sin markdown.
@@ -46,30 +42,12 @@ colócalo en search para que el usuario pueda revisar el resultado, y no invente
 La frase del usuario es: {transcript}
 """
         try:
-            url = (
-                "https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{settings.GEMINI_MODEL}:generateContent"
-            )
-            response = httpx.post(
-                url,
-                params={"key": settings.GEMINI_API_KEY},
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            text = payload["candidates"][0]["content"]["parts"][0]["text"]
-            data = cls._parse_json(text)
+            data = cls._parse_json(GeminiClient.generate_text(prompt))
             if data.get("low_stock_threshold") is None:
                 data["low_stock_threshold"] = 5
             return ReportRequest(**data)
         except BadRequestException:
             raise
-        except httpx.HTTPStatusError as exc:
-            detail = exc.response.json().get("error", {}).get("message", str(exc))
-            raise BadRequestException(detail=f"Gemini rechazó la consulta: {detail}") from exc
-        except (KeyError, IndexError, TypeError) as exc:
-            raise BadRequestException(detail="Gemini devolvió una respuesta sin contenido interpretable") from exc
         except Exception as exc:
             raise BadRequestException(detail=f"No se pudo interpretar la consulta con Gemini: {exc}") from exc
 
