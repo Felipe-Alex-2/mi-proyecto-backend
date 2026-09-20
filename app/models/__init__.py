@@ -1,4 +1,4 @@
-﻿from app.database import Base
+from app.database import Base
 from app.models.user import User, UserRole
 from app.models.token_blacklist import TokenBlacklist
 from app.models.password_reset_token import PasswordResetToken
@@ -16,6 +16,11 @@ from app.models.cart_item import CartItem
 from app.models.reservation import Reservation, ReservationStatus
 from app.models.reservation_item import ReservationItem
 from app.models.activity_log import ActivityLog
+from app.models.payment import Payment
+from app.models.notification import Notification
+from app.models.biometric_profile import BiometricProfile
+from app.models.size_guide import SizeGuide
+from app.models.virtual_fitting_session import VirtualFittingSession
 
 __all__ = [
     "Base",
@@ -39,4 +44,9 @@ __all__ = [
     "ReservationStatus",
     "ReservationItem",
     "ActivityLog",
+    "Payment",
+    "Notification",
+    "BiometricProfile",
+    "SizeGuide",
+    "VirtualFittingSession",
 ]

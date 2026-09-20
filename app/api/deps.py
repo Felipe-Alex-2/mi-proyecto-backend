@@ -1,5 +1,5 @@
 from typing import Generator, Optional
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -46,6 +46,41 @@ def get_current_user(
         raise AuthException(detail="User account is inactive")
 
     return user
+
+
+def get_current_user_flexible(
+    token: Optional[str] = Query(None),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
+    db: Session = Depends(get_db),
+) -> User:
+    """Retrieves user from either Authorization: Bearer header or ?token= query parameter."""
+    raw_token = credentials.credentials if credentials else token
+    if not raw_token:
+        raise AuthException(detail="Authentication credentials were not provided")
+
+    if AuthService.is_token_blacklisted(db, raw_token):
+        raise AuthException(detail="Token has been revoked")
+
+    payload = decode_token(raw_token)
+    if not payload:
+        raise AuthException(detail="Invalid or expired token")
+
+    if payload.get("type") != "access":
+        raise AuthException(detail="Invalid token type")
+
+    user_id: Optional[str] = payload.get("sub")
+    if not user_id:
+        raise AuthException(detail="Could not validate credentials")
+
+    user = UserService.get_by_id(db, user_id)
+    if not user:
+        raise AuthException(detail="User not found")
+
+    if not user.is_active:
+        raise AuthException(detail="User account is inactive")
+
+    return user
+
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:

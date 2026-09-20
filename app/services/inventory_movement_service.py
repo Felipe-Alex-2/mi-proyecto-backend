@@ -1,4 +1,4 @@
-﻿from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.inventory_movement import InventoryMovement, MovementType
@@ -112,6 +112,9 @@ class InventoryMovementService:
             previous_stock=previous_stock,
             new_stock=new_stock,
             user_id=user.id,
+            payment_method=data.payment_method,
+            payment_status=data.payment_status or "PENDING",
+            amount=data.amount,
         )
         db.add(movement)
         db.commit()
@@ -211,6 +214,10 @@ class InventoryMovementService:
             movement.reason = data.reason.strip()
         if data.reference_number is not None:
             movement.reference_number = data.reference_number.strip() if data.reference_number else None
+        if data.payment_method is not None:
+            movement.payment_method = data.payment_method
+        if data.payment_status is not None:
+            movement.payment_status = data.payment_status
 
         db.commit()
         db.refresh(movement)

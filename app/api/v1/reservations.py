@@ -1,4 +1,4 @@
-﻿from typing import List, Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_roles
@@ -9,6 +9,10 @@ from app.schemas.reservation import (
     ReservationStatusUpdate,
     ReservationResponse,
     ReservationStatsResponse,
+    PayPalReservationOrderCreate,
+    PayPalOrderResponse,
+    PayPalCaptureRequest,
+    PayPalCaptureResponse,
 )
 from app.services.reservation_service import ReservationService
 
@@ -27,6 +31,36 @@ def create_reservation(
     current_user: User = Depends(get_current_user),
 ):
     return ReservationService.create_reservation(db=db, customer=current_user, data=payload)
+
+
+@router.post(
+    "/paypal-order",
+    response_model=PayPalOrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear orden en PayPal Sandbox para pagar y reservar prendas",
+)
+def create_paypal_reservation_order(
+    payload: PayPalReservationOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return ReservationService.create_paypal_order(db=db, customer=current_user, data=payload)
+
+
+@router.post(
+    "/paypal-capture",
+    response_model=PayPalCaptureResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Capturar y confirmar pago aprobado en PayPal",
+)
+def capture_paypal_reservation_order(
+    payload: PayPalCaptureRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return ReservationService.capture_paypal_order(
+        db=db, user=current_user, paypal_order_id=payload.paypal_order_id
+    )
 
 
 @router.get(

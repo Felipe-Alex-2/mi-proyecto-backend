@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "FashionStore"
 
+    # PayPal Sandbox
+    PAYPAL_CLIENT_ID: str = "BAAgAP2YtTQ2bAYxpfmeNidhSjKcagiXNSy-Y9MO8CCzCi7_uIH4AGjOTUWYzcC_b-R49TE3xgGtE4ZfnM"
+    PAYPAL_CLIENT_SECRET: str = "EMXqvch3aLQqllX03PFwnasRL_FfFabn5JLTbr7PUj3KlLLM7dohH9Fyzya55wFlNPE9e5Whr8K7DPyE"
+    PAYPAL_BASE_URL: str = "https://api-m.sandbox.paypal.com"
+    PAYPAL_CURRENCY: str = "EUR"
+    FRONTEND_URL: str = "http://localhost:4200"
+
     # CORS — stored as plain str so pydantic-settings never calls json.loads() on it.
     # Railway: set CORS_ORIGINS=https://your-app.com,https://other.com  (comma-separated)
     # OR leave unset to use the default localhost origins.

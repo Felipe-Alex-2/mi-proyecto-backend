@@ -1,7 +1,7 @@
-﻿import enum
+import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -26,6 +26,14 @@ class InventoryMovement(Base):
     previous_stock = Column(Integer, nullable=False, default=0)
     new_stock = Column(Integer, nullable=False, default=0)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Payment tracking fields
+    payment_method = Column(String(50), nullable=True)
+    payment_status = Column(String(50), default="PENDING", nullable=True)
+    amount = Column(Numeric(10, 2), nullable=True)
+    paypal_order_id = Column(String(100), nullable=True)
+    paypal_capture_id = Column(String(100), nullable=True)
+
     created_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

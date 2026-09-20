@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.inventory_movement import MovementType
@@ -11,11 +11,16 @@ class InventoryMovementCreate(BaseModel):
     quantity: int = Field(..., ge=1, description="Cantidad a mover (entero positivo mayor o igual a 1)")
     reason: str = Field(..., min_length=5, max_length=255, description="Motivo del movimiento")
     reference_number: Optional[str] = Field(None, max_length=100, description="Número de referencia/guía/factura")
+    payment_method: Optional[str] = Field(None, description="Método de pago (EFECTIVO, PAYPAL)")
+    payment_status: Optional[str] = Field("PENDING", description="Estado de pago (PENDING, PAID)")
+    amount: Optional[float] = Field(None, description="Monto cobrado si corresponde")
 
 
 class InventoryMovementUpdate(BaseModel):
     reason: Optional[str] = Field(None, min_length=5, max_length=255, description="Motivo corregido")
     reference_number: Optional[str] = Field(None, max_length=100, description="Número de referencia/guía corregido")
+    payment_method: Optional[str] = Field(None, description="Método de pago corregido")
+    payment_status: Optional[str] = Field(None, description="Estado de pago corregido")
 
 
 class InventoryMovementResponse(BaseModel):
@@ -30,6 +35,13 @@ class InventoryMovementResponse(BaseModel):
     new_stock: int
     user_id: Optional[str] = None
     created_at: datetime
+
+    # Payment tracking fields
+    payment_method: Optional[str] = None
+    payment_status: Optional[str] = None
+    amount: Optional[float] = None
+    paypal_order_id: Optional[str] = None
+    paypal_capture_id: Optional[str] = None
     
     # Optional enriched presentation fields
     product_id: Optional[str] = None
