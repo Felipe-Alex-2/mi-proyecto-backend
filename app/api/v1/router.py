@@ -14,6 +14,7 @@ from app.api.v1.catalog import router as catalog_router
 from app.api.v1.reports import router as reports_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.notifications import router as notifications_router
+from app.api.v1.virtual_fitting import router as virtual_fitting_router
 
 api_v1_router = APIRouter(prefix="/v1")
 
@@ -32,5 +33,6 @@ api_v1_router.include_router(catalog_router)
 api_v1_router.include_router(reports_router)
 api_v1_router.include_router(payments_router)
 api_v1_router.include_router(notifications_router)
+api_v1_router.include_router(virtual_fitting_router)
 
 

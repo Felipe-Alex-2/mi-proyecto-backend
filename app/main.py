@@ -87,6 +87,59 @@ async def lifespan(app: FastAPI):
                 """,
                 "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications (user_id);",
                 "CREATE INDEX IF NOT EXISTS ix_notifications_is_read ON notifications (is_read);",
+                """
+                CREATE TABLE IF NOT EXISTS biometric_profiles (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    gender VARCHAR(20) NOT NULL DEFAULT 'HOMBRE',
+                    height_cm NUMERIC(6, 2) NOT NULL,
+                    weight_kg NUMERIC(6, 2) NOT NULL,
+                    chest_cm NUMERIC(6, 2) NOT NULL,
+                    waist_cm NUMERIC(6, 2) NOT NULL,
+                    hip_cm NUMERIC(6, 2) NOT NULL,
+                    photo_url TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS size_guides (
+                    id VARCHAR(36) PRIMARY KEY,
+                    category_id VARCHAR(36) REFERENCES categories(id) ON DELETE CASCADE,
+                    size_id VARCHAR(36) NOT NULL REFERENCES sizes(id) ON DELETE CASCADE,
+                    gender VARCHAR(20) NOT NULL DEFAULT 'UNISEX',
+                    chest_min NUMERIC(6, 2),
+                    chest_max NUMERIC(6, 2),
+                    waist_min NUMERIC(6, 2),
+                    waist_max NUMERIC(6, 2),
+                    hip_min NUMERIC(6, 2),
+                    hip_max NUMERIC(6, 2),
+                    height_min NUMERIC(6, 2),
+                    height_max NUMERIC(6, 2),
+                    weight_min NUMERIC(6, 2),
+                    weight_max NUMERIC(6, 2),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS virtual_fitting_sessions (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    product_id VARCHAR(36) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                    variant_id VARCHAR(36) REFERENCES product_variants(id) ON DELETE SET NULL,
+                    user_image_url TEXT,
+                    garment_image_url TEXT,
+                    result_image_url TEXT,
+                    recommended_size VARCHAR(20),
+                    confidence_score NUMERIC(5, 2),
+                    fit_feedback TEXT,
+                    status VARCHAR(30) NOT NULL DEFAULT 'COMPLETED',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+                """,
+                "CREATE INDEX IF NOT EXISTS ix_biometric_user_id ON biometric_profiles (user_id);",
+                "CREATE INDEX IF NOT EXISTS ix_vton_user_id ON virtual_fitting_sessions (user_id);",
             ]:
                 try:
                     conn.execute(text(col_sql))

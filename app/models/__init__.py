@@ -17,6 +17,9 @@ from app.models.reservation import Reservation, ReservationStatus
 from app.models.reservation_item import ReservationItem
 from app.models.payment import Payment
 from app.models.notification import Notification
+from app.models.biometric_profile import BiometricProfile
+from app.models.size_guide import SizeGuide
+from app.models.virtual_fitting_session import VirtualFittingSession
 
 __all__ = [
     "Base",
@@ -41,4 +44,7 @@ __all__ = [
     "ReservationItem",
     "Payment",
     "Notification",
+    "BiometricProfile",
+    "SizeGuide",
+    "VirtualFittingSession",
 ]
