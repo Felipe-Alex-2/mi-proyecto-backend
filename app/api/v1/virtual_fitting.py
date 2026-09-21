@@ -106,7 +106,7 @@ async def idm_virtual_tryon(
     garment_image: UploadFile = File(..., description="Foto de la prenda (JPG/PNG)"),
     garment_description: str = Form(default="", description="Descripción opcional de la prenda"),
     use_auto_mask: bool = Form(default=True, description="Usar auto-masking (recomendado)"),
-    use_auto_crop: bool = Form(default=False, description="Usar auto-crop y resize"),
+    use_auto_crop: bool = Form(default=True, description="Usar auto-crop y resize (recomendado)"),
     denoise_steps: int = Form(default=30, ge=20, le=40, description="Pasos de denoising"),
     seed: int = Form(default=42, description="Semilla para reproducibilidad"),
     current_user: User = Depends(get_current_user),
