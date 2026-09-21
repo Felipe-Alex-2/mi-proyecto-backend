@@ -1,5 +1,8 @@
+import base64
+import tempfile
+from pathlib import Path
 from typing import Optional, List
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.database import get_db
@@ -14,6 +17,10 @@ from app.schemas.virtual_fitting import (
     TryOnResponse,
 )
 from app.services.virtual_fitting_service import VirtualFittingService
+from app.services.idm_vton_client import (
+    IDMVTONUnavailableError,
+    run_tryon_from_bytes,
+)
 
 router = APIRouter(prefix="/virtual-fitting", tags=["Virtual Fitting Room (Probador Virtual con IA)"])
 
@@ -82,6 +89,76 @@ def try_on_garment(
         user_id=current_user.id,
         payload=payload,
     )
+
+
+@router.post(
+    "/idm-tryon",
+    status_code=status.HTTP_200_OK,
+    summary="Virtual Try-On real con IDM-VTON via Gradio (multipart)",
+    description=(
+        "Recibe la foto de la persona y la foto de la prenda como archivos multipart, "
+        "los envía al modelo IDM-VTON (expuesto via ngrok) y devuelve la imagen "
+        "resultante en base64. Si el servicio VTON no está disponible responde 503."
+    ),
+)
+async def idm_virtual_tryon(
+    person_image: UploadFile = File(..., description="Foto de la persona (JPG/PNG)"),
+    garment_image: UploadFile = File(..., description="Foto de la prenda (JPG/PNG)"),
+    garment_description: str = Form(default="", description="Descripción opcional de la prenda"),
+    use_auto_mask: bool = Form(default=True, description="Usar auto-masking (recomendado)"),
+    use_auto_crop: bool = Form(default=False, description="Usar auto-crop y resize"),
+    denoise_steps: int = Form(default=30, ge=20, le=40, description="Pasos de denoising"),
+    seed: int = Form(default=42, description="Semilla para reproducibilidad"),
+    current_user: User = Depends(get_current_user),
+):
+    """Llama al servicio IDM-VTON Gradio y retorna la imagen resultado en base64."""
+    person_bytes = await person_image.read()
+    garment_bytes = await garment_image.read()
+
+    if not person_bytes:
+        raise HTTPException(status_code=400, detail="La imagen de la persona está vacía.")
+    if not garment_bytes:
+        raise HTTPException(status_code=400, detail="La imagen de la prenda está vacía.")
+
+    person_filename = person_image.filename or "person.jpg"
+    garment_filename = garment_image.filename or "garment.jpg"
+
+    try:
+        result_bytes = run_tryon_from_bytes(
+            person_image_bytes=person_bytes,
+            person_filename=person_filename,
+            garment_image_bytes=garment_bytes,
+            garment_filename=garment_filename,
+            garment_description=garment_description,
+            use_auto_mask=use_auto_mask,
+            use_auto_crop=use_auto_crop,
+            denoise_steps=denoise_steps,
+            seed=seed,
+        )
+    except IDMVTONUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"El servicio de Virtual Try-On (IDM-VTON) no está disponible. "
+                f"Verifica que el modelo esté corriendo y VTON_URL esté configurada. "
+                f"Detalle: {exc}"
+            ),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Error al procesar el Virtual Try-On. El servicio puede estar ocupado. "
+                f"Intenta de nuevo en unos momentos. Detalle: {exc}"
+            ),
+        )
+
+    result_b64 = base64.b64encode(result_bytes).decode("utf-8")
+    return {
+        "result_image_b64": result_b64,
+        "mime_type": "image/webp",
+        "message": "Virtual Try-On generado exitosamente con IDM-VTON.",
+    }
 
 
 @router.get(
