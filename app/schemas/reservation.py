@@ -34,6 +34,8 @@ class ReservationItemResponse(BaseModel):
     color_name: Optional[str] = None
     color_hex: Optional[str] = None
     price: float = 0.0
+    original_price: Optional[float] = None
+    discount_percent: Optional[float] = None
     image_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

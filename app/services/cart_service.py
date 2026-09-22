@@ -1,4 +1,4 @@
-﻿from typing import List
+from typing import List
 from sqlalchemy.orm import Session
 from app.models.cart_item import CartItem
 from app.models.product_variant import ProductVariant
@@ -26,7 +26,17 @@ class CartService:
             if not v:
                 continue
 
-            price = float(v.product.price) if (v.product and v.product.price is not None) else 0.0
+            original_price = float(v.product.price) if (v.product and v.product.price is not None) else 0.0
+            discount_percent = (
+                float(v.product.promotion.discount_percent)
+                if (v.product and v.product.promotion and v.product.promotion.is_active and v.product.promotion.discount_percent)
+                else None
+            )
+            if discount_percent and discount_percent > 0:
+                price = round(original_price * (1.0 - (discount_percent / 100.0)), 2)
+            else:
+                price = original_price
+
             subtotal = round(price * item.quantity, 2)
             total_items += item.quantity
             total_amount += subtotal
@@ -48,6 +58,8 @@ class CartService:
                 color_name=v.color.name if v.color else None,
                 color_hex=v.color.hex_code if v.color else None,
                 price=price,
+                original_price=original_price if (discount_percent and discount_percent > 0) else None,
+                discount_percent=discount_percent,
                 subtotal=subtotal,
                 image_url=v.product.image_url if v.product else None,
                 available_stock=available_stock,

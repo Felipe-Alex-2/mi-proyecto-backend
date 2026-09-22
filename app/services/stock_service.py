@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -87,6 +87,14 @@ class StockService:
         items: List[BranchInventoryItem] = []
 
         for stock, variant, product, size, color, category in results:
+            base_p = float(variant.price_override if variant.price_override is not None else product.price)
+            disc_pct = (
+                float(product.promotion.discount_percent)
+                if (product.promotion and product.promotion.is_active and product.promotion.discount_percent)
+                else None
+            )
+            eff_price = round(base_p * (1.0 - disc_pct / 100.0), 2) if (disc_pct and disc_pct > 0) else base_p
+
             items.append(
                 BranchInventoryItem(
                     variant_id=variant.id,
@@ -98,7 +106,9 @@ class StockService:
                     size_name=size.name,
                     color_name=color.name,
                     color_hex=color.hex_code,
-                    price=float(variant.price_override if variant.price_override is not None else product.price),
+                    price=eff_price,
+                    original_price=base_p if (disc_pct and disc_pct > 0) else None,
+                    discount_percent=disc_pct,
                     quantity=stock.quantity,
                     min_alert_threshold=stock.min_alert_threshold,
                     is_low_stock=stock.quantity <= stock.min_alert_threshold,

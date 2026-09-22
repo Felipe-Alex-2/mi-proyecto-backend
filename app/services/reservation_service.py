@@ -43,7 +43,17 @@ class ReservationService:
 
         for item in r.items:
             v = item.variant
-            price = float(v.product.price) if (v and v.product and v.product.price is not None) else 0.0
+            orig_price = float(v.product.price) if (v and v.product and v.product.price is not None) else 0.0
+            discount_percent = (
+                float(v.product.promotion.discount_percent)
+                if (v and v.product and v.product.promotion and v.product.promotion.is_active and v.product.promotion.discount_percent)
+                else None
+            )
+            if discount_percent and discount_percent > 0:
+                price = round(orig_price * (1.0 - (discount_percent / 100.0)), 2)
+            else:
+                price = orig_price
+
             total_items += item.quantity
             total_estimated += price * item.quantity
 
@@ -59,6 +69,8 @@ class ReservationService:
                     color_name=v.color.name if (v and v.color) else None,
                     color_hex=v.color.hex_code if (v and v.color) else None,
                     price=price,
+                    original_price=orig_price if (discount_percent and discount_percent > 0) else None,
+                    discount_percent=discount_percent,
                     image_url=v.product.image_url if (v and v.product) else None,
                 )
             )
@@ -155,12 +167,18 @@ class ReservationService:
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(hours=48)
 
-        # Calculate estimated total amount
+        # Calculate estimated total amount with active promotion discounts
         total_estimated = 0.0
         for item_in in data.items:
             v = db.query(ProductVariant).filter(ProductVariant.id == item_in.variant_id).first()
-            if v and v.product and v.product.price:
-                total_estimated += float(v.product.price) * item_in.quantity
+            if v and v.product and v.product.price is not None:
+                p = v.product
+                orig_price = float(p.price)
+                if p.promotion and p.promotion.is_active and p.promotion.discount_percent:
+                    eff_price = round(orig_price * (1.0 - float(p.promotion.discount_percent) / 100.0), 2)
+                else:
+                    eff_price = orig_price
+                total_estimated += eff_price * item_in.quantity
 
         reservation = Reservation(
             reservation_code=code,
@@ -381,7 +399,11 @@ class ReservationService:
                     stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
                     curr_qty = stk.quantity if stk else 0
                     v = item.variant
-                    item_price = float(v.product.price) if (v and v.product and v.product.price) else 0.0
+                    orig_p = float(v.product.price) if (v and v.product and v.product.price) else 0.0
+                    if v and v.product and v.product.promotion and v.product.promotion.is_active and v.product.promotion.discount_percent:
+                        item_price = round(orig_p * (1.0 - float(v.product.promotion.discount_percent) / 100.0), 2)
+                    else:
+                        item_price = orig_p
                     mov = InventoryMovement(
                         variant_id=item.variant_id,
                         branch_id=r.branch_id,

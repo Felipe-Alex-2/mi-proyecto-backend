@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +27,8 @@ class CartItemResponse(BaseModel):
     color_name: Optional[str] = None
     color_hex: Optional[str] = None
     price: float = 0.0
+    original_price: Optional[float] = None
+    discount_percent: Optional[float] = None
     subtotal: float = 0.0
     image_url: Optional[str] = None
     available_stock: int = 0

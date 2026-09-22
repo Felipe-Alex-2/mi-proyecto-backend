@@ -33,6 +33,8 @@ class BranchInventoryItem(BaseModel):
     color_name: str
     color_hex: str
     price: float
+    original_price: Optional[float] = None
+    discount_percent: Optional[float] = None
     quantity: int
     min_alert_threshold: int
     is_low_stock: bool
