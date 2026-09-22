@@ -8,7 +8,7 @@ class PaymentBase(BaseModel):
     customer_email: Optional[str] = Field(None, max_length=150, description="Correo electrónico opcional")
     concept: str = Field(..., min_length=2, max_length=255, description="Concepto del cobro")
     amount: float = Field(..., gt=0, description="Monto total a cobrar")
-    currency: str = Field("EUR", description="Moneda (EUR, USD, BOB)")
+    currency: str = Field("USD", description="Moneda (USD, BOB, EUR)")
     payment_type: str = Field("EFECTIVO", description="Tipo de pago: EFECTIVO o PAYPAL")
     notes: Optional[str] = Field(None, description="Notas adicionales")
 

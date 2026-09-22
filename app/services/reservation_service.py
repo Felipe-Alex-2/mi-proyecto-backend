@@ -555,7 +555,7 @@ class ReservationService:
                         customer_email=customer_email,
                         concept=f"Reserva {r.reservation_code} ({tot_items} prendas)",
                         amount=float(r.total_amount or r.total_estimated_amount),
-                        currency="EUR",
+                        currency="USD",
                         payment_type=r.payment_method or "EFECTIVO",
                         status="PENDING",
                         reference="Pendiente en Caja",

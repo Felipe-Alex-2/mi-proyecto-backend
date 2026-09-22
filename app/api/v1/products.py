@@ -56,7 +56,7 @@ def create_product(
         db=db,
         user=current_user,
         action="CREAR_PRODUCTO",
-        description=f"Producto creado: {product.name} ({product.sku_code})",
+        description=f"Producto creado: {product.name} (ID: {product.id[:8]})",
         category="CATALOGO",
     )
     return ProductService.get_product_by_id(db, product.id)
@@ -93,7 +93,7 @@ def update_product(
         db=db,
         user=current_user,
         action="ACTUALIZAR_PRODUCTO",
-        description=f"Producto actualizado: {updated.name} ({updated.sku_code})",
+        description=f"Producto actualizado: {updated.name} (ID: {updated.id[:8]})",
         category="CATALOGO",
     )
     return updated

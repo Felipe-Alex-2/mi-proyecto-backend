@@ -45,7 +45,7 @@ class PayPalService:
         custom_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         access_token = PayPalService._get_access_token()
-        curr = currency or settings.PAYPAL_CURRENCY or "EUR"
+        curr = currency or settings.PAYPAL_CURRENCY or "USD"
         ret_url = return_url or "https://www.sandbox.paypal.com/myaccount/summary?intl=0"
         canc_url = cancel_url or "https://www.sandbox.paypal.com/myaccount/summary?intl=0"
 

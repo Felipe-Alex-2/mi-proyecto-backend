@@ -285,7 +285,7 @@ class PaymentService:
             customer_email=data.customer_email.strip() if data.customer_email else None,
             concept=concept_final,
             amount=amount_final,
-            currency=data.currency or "EUR",
+            currency=data.currency or "USD",
             payment_type=data.payment_type or "EFECTIVO",
             status="PENDING",
             reference="Pendiente en Caja",

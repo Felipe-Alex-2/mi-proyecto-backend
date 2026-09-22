@@ -17,7 +17,7 @@ class Payment(Base):
     customer_email = Column(String(150), nullable=True)
     concept = Column(String(255), nullable=False)
     amount = Column(Numeric(10, 2), nullable=False, default=0.00)
-    currency = Column(String(10), default="EUR", nullable=False)
+    currency = Column(String(10), default="USD", nullable=False)
     payment_type = Column(String(20), nullable=False, default="EFECTIVO")  # EFECTIVO, PAYPAL
     status = Column(String(20), nullable=False, default="PENDING")          # PENDING, PAID, CANCELLED
     reference = Column(String(100), nullable=True)                        # Caja Local, PayPal Order ID, etc.
