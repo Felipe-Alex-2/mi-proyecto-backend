@@ -167,7 +167,8 @@ def get_payment_invoice_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
             "Cache-Control": "no-cache",
         },
     )

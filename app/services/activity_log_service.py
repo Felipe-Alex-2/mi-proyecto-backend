@@ -33,6 +33,33 @@ class ActivityLogService:
         return log
 
     @staticmethod
+    def log_event(
+        db: Session,
+        user: Optional[User],
+        action: str,
+        description: str,
+        category: str = "NEGOCIO",
+        ip_address: Optional[str] = None,
+    ) -> Optional[ActivityLog]:
+        try:
+            log = ActivityLog(
+                user_id=user.id if user else None,
+                user_email=user.email if user else "sistema@local.dev",
+                user_name=user.full_name if user else "Sistema",
+                action=action.strip().upper(),
+                description=description.strip(),
+                category=category.strip().upper(),
+                ip_address=ip_address,
+            )
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+            return log
+        except Exception:
+            db.rollback()
+            return None
+
+    @staticmethod
     def list_logs(
         db: Session,
         page: int = 1,

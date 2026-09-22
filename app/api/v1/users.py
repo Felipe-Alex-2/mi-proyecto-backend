@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserResponse, UserUpdate, UserCreateAdmin, UserUpdateAdmin
+from app.services.activity_log_service import ActivityLogService
 from app.services.user_service import UserService
 from app.api.deps import get_current_user, require_admin
 from app.core.exceptions import ConflictException, NotFoundException
@@ -40,6 +41,13 @@ def update_me(
             raise ConflictException(detail="Email is already taken by another account")
 
     updated_user = UserService.update(db, current_user, request)
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="ACTUALIZAR_PERFIL",
+        description=f"Usuario actualizó su propio perfil: {updated_user.email}",
+        category="SEGURIDAD",
+    )
     return updated_user
 
 
@@ -76,7 +84,15 @@ def create_user(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    return UserService.create_by_admin(db, request)
+    created = UserService.create_by_admin(db, request)
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="CREAR_USUARIO",
+        description=f"Administrador creó cuenta para {created.email} con rol {created.role.name if created.role else 'USUARIO'}",
+        category="ADMINISTRACION",
+    )
+    return created
 
 
 @router.get(
@@ -111,7 +127,15 @@ def update_user(
     user = UserService.get_by_id(db, user_id)
     if not user:
         raise NotFoundException(detail="Usuario no encontrado")
-    return UserService.update_by_admin(db, user, request)
+    updated = UserService.update_by_admin(db, user, request)
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="ACTUALIZAR_USUARIO",
+        description=f"Administrador actualizó cuenta de {updated.email}",
+        category="ADMINISTRACION",
+    )
+    return updated
 
 
 @router.patch(
@@ -128,4 +152,13 @@ def toggle_user_status(
     user = UserService.get_by_id(db, user_id)
     if not user:
         raise NotFoundException(detail="Usuario no encontrado")
-    return UserService.toggle_status(db, user, current_user.id)
+    toggled = UserService.toggle_status(db, user, current_user.id)
+    status_str = "activo" if toggled.is_active else "desactivado"
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="CAMBIAR_ESTADO_USUARIO",
+        description=f"Administrador cambió estado de {toggled.email} a {status_str}",
+        category="ADMINISTRACION",
+    )
+    return toggled

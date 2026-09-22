@@ -6,8 +6,9 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.recommendation import RecommendationRequest, RecommendationResponse
 from app.services.recommendation_service import RecommendationService
+from app.services.activity_log_service import ActivityLogService
 
-router = APIRouter(prefix="/recommendations", tags=["AI Recommendations (CU22)"])
+router = APIRouter(prefix="/recommendations", tags=["AI Recommendations"])
 
 
 @router.post(
@@ -21,4 +22,12 @@ def recommend_products(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return RecommendationService.recommend(db=db, message=payload.message)
+    result = RecommendationService.recommend(db=db, message=payload.message)
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="CONSULTA_IA_CARLITOS",
+        description=f"Consulta al Asistente Carlitos: '{payload.message[:80]}' (Coincidencias: {len(result.recommendations)} prendas)",
+        category="IA",
+    )
+    return result

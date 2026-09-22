@@ -20,6 +20,7 @@ from app.schemas.payment import (
     PendingReservationOption,
 )
 from app.services.paypal_service import PayPalService
+from app.services.activity_log_service import ActivityLogService
 from app.core.exceptions import NotFoundException, BadRequestException, ForbiddenException
 
 logger = logging.getLogger("payments")
@@ -297,6 +298,14 @@ class PaymentService:
         db.commit()
         db.refresh(payment)
 
+        ActivityLogService.log_event(
+            db=db,
+            user=user,
+            action="CREAR_ORDEN_COBRO",
+            description=f"Orden de cobro #{payment.payment_code} creada por ${payment.amount:.2f} {payment.currency} ({payment.payment_type}) para cliente {payment.customer_name}",
+            category="FINANZAS",
+        )
+
         return cls._enrich_payment(payment)
 
     @classmethod
@@ -378,6 +387,15 @@ class PaymentService:
 
         db.commit()
         db.refresh(p)
+
+        ActivityLogService.log_event(
+            db=db,
+            user=user,
+            action="COBRO_EFECTIVO",
+            description=f"Cobro en efectivo liquidado exitosamente #{p.payment_code} por ${p.amount:.2f} {p.currency} en caja de sucursal",
+            category="FINANZAS",
+        )
+
         return cls._enrich_payment(p)
 
     @classmethod
@@ -559,6 +577,14 @@ class PaymentService:
 
             db.commit()
             db.refresh(p)
+
+            ActivityLogService.log_event(
+                db=db,
+                user=user,
+                action="COBRO_PAYPAL",
+                description=f"Cobro PayPal capturado exitosamente #{p.payment_code} por ${p.amount:.2f} {p.currency} (Order: {paypal_order_id})",
+                category="FINANZAS",
+            )
         else:
             raise BadRequestException(detail=f"La captura de PayPal retornó estado: {capture_status}")
 

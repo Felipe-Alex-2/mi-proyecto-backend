@@ -9,6 +9,7 @@ from app.schemas.product import (
     ProductResponse,
     ProductUpdate,
 )
+from app.services.activity_log_service import ActivityLogService
 from app.services.product_service import ProductService
 
 router = APIRouter(prefix="/products", tags=["Products & Garments"])
@@ -51,6 +52,13 @@ def create_product(
     current_user: User = Depends(require_admin),
 ):
     product = ProductService.create_product(db, payload)
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="CREAR_PRODUCTO",
+        description=f"Producto creado: {product.name} ({product.sku_code})",
+        category="CATALOGO",
+    )
     return ProductService.get_product_by_id(db, product.id)
 
 
@@ -80,7 +88,15 @@ def update_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    return ProductService.update_product(db, product_id, payload)
+    updated = ProductService.update_product(db, product_id, payload)
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="ACTUALIZAR_PRODUCTO",
+        description=f"Producto actualizado: {updated.name} ({updated.sku_code})",
+        category="CATALOGO",
+    )
+    return updated
 
 
 @router.patch(
@@ -94,4 +110,13 @@ def toggle_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    return ProductService.toggle_status(db, product_id)
+    toggled = ProductService.toggle_status(db, product_id)
+    status_str = "activo" if toggled.is_active else "inactivo"
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="CAMBIAR_ESTADO_PRODUCTO",
+        description=f"Producto {toggled.name} marcado como {status_str}",
+        category="CATALOGO",
+    )
+    return toggled

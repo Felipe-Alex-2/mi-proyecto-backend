@@ -26,6 +26,7 @@ from app.schemas.reservation import (
     PayPalCaptureResponse,
 )
 from app.services.paypal_service import PayPalService
+from app.services.activity_log_service import ActivityLogService
 from app.core.exceptions import (
     BadRequestException,
     NotFoundException,
@@ -201,6 +202,14 @@ class ReservationService:
 
         db.commit()
         db.refresh(reservation)
+
+        ActivityLogService.log_event(
+            db=db,
+            user=customer,
+            action="CREAR_RESERVA",
+            description=f"Reserva creada #{reservation.reservation_code} en sucursal {branch.name} por {len(data.items)} prenda(s)",
+            category="RESERVAS",
+        )
 
         return cls._enrich_reservation(reservation)
 
@@ -594,6 +603,14 @@ class ReservationService:
         db.commit()
         db.refresh(r)
 
+        ActivityLogService.log_event(
+            db=db,
+            user=user,
+            action="ACTUALIZAR_ESTADO_RESERVA",
+            description=f"Reserva #{r.reservation_code} cambiada de {prev_status} a {target_status}",
+            category="RESERVAS",
+        )
+
         # Trigger customer notification when reservation is accepted/confirmed
         if target_status == ReservationStatus.CONFIRMED.value:
             from app.services.notification_service import NotificationService
@@ -657,6 +674,14 @@ class ReservationService:
         r.staff_notes = "Cancelada voluntariamente por el cliente desde la app"
         db.commit()
         db.refresh(r)
+
+        ActivityLogService.log_event(
+            db=db,
+            user=customer,
+            action="CANCELAR_RESERVA",
+            description=f"Cliente canceló reserva #{r.reservation_code}",
+            category="RESERVAS",
+        )
 
         return cls._enrich_reservation(r)
 

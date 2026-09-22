@@ -28,8 +28,16 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     summary="Register a new user",
     description="Creates a new user account with unique email address and secure password.",
 )
-def register(request: RegisterRequest, db: Session = Depends(get_db)):
+def register(request: RegisterRequest, http_request: Request, db: Session = Depends(get_db)):
     user = AuthService.register(db, request)
+    ActivityLogService.log_event(
+        db=db,
+        user=user,
+        action="REGISTRO_USUARIO",
+        description=f"Nuevo usuario registrado: {user.email}",
+        category="SEGURIDAD",
+        ip_address=http_request.client.host if http_request.client else None,
+    )
     return user
 
 

@@ -17,6 +17,7 @@ from app.core.exceptions import (
     NotFoundException,
     ForbiddenException,
 )
+from app.services.activity_log_service import ActivityLogService
 
 
 class InventoryMovementService:
@@ -119,6 +120,14 @@ class InventoryMovementService:
         db.add(movement)
         db.commit()
         db.refresh(movement)
+
+        ActivityLogService.log_event(
+            db=db,
+            user=user,
+            action="MOVIMIENTO_STOCK",
+            description=f"Movimiento {movement.type} de {movement.quantity} unidades para SKU {variant.sku or 'N/A'} en sucursal {branch.name} (Motivo: {movement.reason})",
+            category="INVENTARIO",
+        )
 
         return cls._enrich_movement(movement)
 

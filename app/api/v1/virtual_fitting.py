@@ -17,6 +17,7 @@ from app.schemas.virtual_fitting import (
     TryOnResponse,
 )
 from app.services.virtual_fitting_service import VirtualFittingService
+from app.services.activity_log_service import ActivityLogService
 from app.services.idm_vton_client import (
     IDMVTONUnavailableError,
     run_tryon_from_bytes,
@@ -84,11 +85,19 @@ def try_on_garment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return VirtualFittingService.process_try_on(
+    result = VirtualFittingService.process_try_on(
         db=db,
         user_id=current_user.id,
         payload=payload,
     )
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="PROBADOR_VIRTUAL",
+        description=f"Prueba de vestidor virtual simulada para prenda {payload.product_id} (Talla recomendada: {result.recommended_size})",
+        category="VTON",
+    )
+    return result
 
 
 @router.post(
@@ -109,6 +118,7 @@ async def idm_virtual_tryon(
     use_auto_crop: bool = Form(default=True, description="Usar auto-crop y resize (recomendado)"),
     denoise_steps: int = Form(default=30, ge=20, le=40, description="Pasos de denoising"),
     seed: int = Form(default=42, description="Semilla para reproducibilidad"),
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Llama al servicio IDM-VTON Gradio y retorna la imagen resultado en base64."""
@@ -154,6 +164,13 @@ async def idm_virtual_tryon(
         )
 
     result_b64 = base64.b64encode(result_bytes).decode("utf-8")
+    ActivityLogService.log_event(
+        db=db,
+        user=current_user,
+        action="PROBADOR_IDM_VTON",
+        description=f"Prueba generativa IDM-VTON realizada para prenda: {garment_description or garment_filename}",
+        category="VTON",
+    )
     return {
         "result_image_b64": result_b64,
         "mime_type": "image/webp",
