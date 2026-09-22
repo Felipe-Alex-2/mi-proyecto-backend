@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.schemas.stock import StockResponse
@@ -53,6 +53,7 @@ class ProductCreate(BaseModel):
     category_id: str
     season_id: Optional[str] = None
     supplier_id: Optional[str] = None
+    promotion_id: Optional[str] = None
     image_url: Optional[str] = None
     gender: str = Field("UNISEX", description="HOMBRE, MUJER, UNISEX, NIÑOS")
     variants: List[VariantCreate] = Field(default_factory=list)
@@ -85,6 +86,7 @@ class ProductUpdate(BaseModel):
     category_id: Optional[str] = None
     season_id: Optional[str] = None
     supplier_id: Optional[str] = None
+    promotion_id: Optional[str] = None
     image_url: Optional[str] = None
     gender: Optional[str] = None
     is_active: Optional[bool] = None
@@ -128,6 +130,9 @@ class ProductResponse(BaseModel):
     season_name: Optional[str] = None
     supplier_id: Optional[str] = None
     supplier_name: Optional[str] = None
+    promotion_id: Optional[str] = None
+    promotion_name: Optional[str] = None
+    discount_percent: Optional[float] = None
     image_url: Optional[str] = None
     gender: str
     is_active: bool

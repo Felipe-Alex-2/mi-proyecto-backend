@@ -31,6 +31,10 @@ async def lifespan(app: FastAPI):
                 conn.execute(text("ALTER TABLE products ALTER COLUMN image_url TYPE TEXT;"))
             except Exception:
                 pass
+            try:
+                conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS promotion_id VARCHAR(36) REFERENCES promotions(id);"))
+            except Exception:
+                pass
             
             # Auto-migrate reservations payment fields
             for col_sql in [

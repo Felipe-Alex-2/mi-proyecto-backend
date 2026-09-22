@@ -21,9 +21,11 @@ from app.models.notification import Notification
 from app.models.biometric_profile import BiometricProfile
 from app.models.size_guide import SizeGuide
 from app.models.virtual_fitting_session import VirtualFittingSession
+from app.models.promotion import Promotion
 
 __all__ = [
     "Base",
+    "Promotion",
     "User",
     "UserRole",
     "TokenBlacklist",

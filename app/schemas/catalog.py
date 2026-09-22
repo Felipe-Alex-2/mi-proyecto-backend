@@ -1,4 +1,4 @@
-﻿from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict
 
 
@@ -45,6 +45,9 @@ class CatalogProductDetailResponse(BaseModel):
     category_name: Optional[str] = None
     season_id: Optional[str] = None
     season_name: Optional[str] = None
+    promotion_id: Optional[str] = None
+    promotion_name: Optional[str] = None
+    discount_percent: Optional[float] = None
     gender: Optional[str] = None
     image_url: Optional[str] = None
     min_price: float = 0.0

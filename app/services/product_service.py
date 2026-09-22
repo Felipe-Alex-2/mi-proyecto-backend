@@ -1,4 +1,4 @@
-﻿import re
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -10,6 +10,7 @@ from app.models.color import Color
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.season import Season
+from app.models.promotion import Promotion
 from app.models.size import Size
 from app.models.stock import Stock
 from app.models.supplier import Supplier
@@ -70,6 +71,14 @@ class ProductService:
                     detail="El proveedor especificado no existe"
                 )
 
+        if payload.promotion_id:
+            promotion = db.query(Promotion).filter(Promotion.id == payload.promotion_id).first()
+            if not promotion:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="La promoción especificada no existe"
+                )
+
         product = Product(
             name=clean_name,
             description=payload.description.strip() if payload.description else None,
@@ -77,6 +86,7 @@ class ProductService:
             category_id=payload.category_id,
             season_id=payload.season_id,
             supplier_id=payload.supplier_id,
+            promotion_id=payload.promotion_id if payload.promotion_id else None,
             image_url=payload.image_url.strip() if payload.image_url else None,
             gender=payload.gender.upper() if payload.gender else "UNISEX",
             is_active=True,
@@ -186,6 +196,9 @@ class ProductService:
             season_name=product.season.name if product.season else None,
             supplier_id=product.supplier_id,
             supplier_name=product.supplier.company_name if product.supplier else None,
+            promotion_id=product.promotion_id,
+            promotion_name=product.promotion.name if (product.promotion and product.promotion.is_active) else None,
+            discount_percent=float(product.promotion.discount_percent) if (product.promotion and product.promotion.is_active) else None,
             image_url=product.image_url,
             gender=product.gender,
             is_active=product.is_active,
@@ -275,6 +288,12 @@ class ProductService:
                 if not sup:
                     raise HTTPException(status_code=404, detail="Proveedor no encontrado")
             product.supplier_id = payload.supplier_id if payload.supplier_id else None
+        if payload.promotion_id is not None:
+            if payload.promotion_id:
+                promo = db.query(Promotion).filter(Promotion.id == payload.promotion_id).first()
+                if not promo:
+                    raise HTTPException(status_code=404, detail="Promoción no encontrada")
+            product.promotion_id = payload.promotion_id if payload.promotion_id else None
         if payload.image_url is not None:
             product.image_url = payload.image_url.strip() if payload.image_url else None
         if payload.gender is not None:

@@ -15,6 +15,7 @@ class Product(Base):
     category_id = Column(String(36), ForeignKey("categories.id"), nullable=False)
     season_id = Column(String(36), ForeignKey("seasons.id"), nullable=True)
     supplier_id = Column(String(36), ForeignKey("suppliers.id"), nullable=True)
+    promotion_id = Column(String(36), ForeignKey("promotions.id"), nullable=True)
     image_url = Column(Text, nullable=True)
     gender = Column(String(30), default="UNISEX", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -29,4 +30,5 @@ class Product(Base):
     category = relationship("Category")
     season = relationship("Season")
     supplier = relationship("Supplier")
+    promotion = relationship("Promotion")
     variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")

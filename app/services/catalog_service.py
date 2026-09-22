@@ -1,4 +1,4 @@
-﻿from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from app.models.product import Product
@@ -119,6 +119,9 @@ class CatalogService:
             category_name=product.category.name if product.category else None,
             season_id=product.season_id,
             season_name=product.season.name if product.season else None,
+            promotion_id=product.promotion_id,
+            promotion_name=product.promotion.name if (product.promotion and product.promotion.is_active) else None,
+            discount_percent=float(product.promotion.discount_percent) if (product.promotion and product.promotion.is_active) else None,
             gender=product.gender,
             image_url=product.image_url,
             min_price=base_price,
