@@ -96,7 +96,7 @@ def list_reservations(
 def get_reservation_stats(
     branch_id: Optional[str] = Query(None, description="Filtrar por sucursal"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER, UserRole.CASHIER)),
 ):
     return ReservationService.get_stats(db=db, user=current_user, branch_id=branch_id)
 

@@ -1,9 +1,9 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, require_admin, require_roles
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.product import (
     ProductCreate,
     ProductResponse,
@@ -49,7 +49,7 @@ def list_products(
 def create_product(
     payload: ProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     product = ProductService.create_product(db, payload)
     ActivityLogService.log_event(
@@ -80,13 +80,13 @@ def get_product(
     "/{product_id}",
     response_model=ProductResponse,
     status_code=status.HTTP_200_OK,
-    summary="Update product details (Admin only)",
+    summary="Update product details (Admin and Store Manager)",
 )
 def update_product(
     product_id: str,
     payload: ProductUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     updated = ProductService.update_product(db, product_id, payload)
     ActivityLogService.log_event(
@@ -103,12 +103,12 @@ def update_product(
     "/{product_id}/toggle-status",
     response_model=ProductResponse,
     status_code=status.HTTP_200_OK,
-    summary="Toggle product active/inactive (Admin only)",
+    summary="Toggle product active/inactive (Admin and Store Manager)",
 )
 def toggle_status(
     product_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     toggled = ProductService.toggle_status(db, product_id)
     status_str = "activo" if toggled.is_active else "inactivo"

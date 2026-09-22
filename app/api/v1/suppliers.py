@@ -2,10 +2,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse
 from app.services.supplier_service import SupplierService
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, require_admin, require_roles
 
 router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 
@@ -29,12 +29,12 @@ def list_suppliers(
     "",
     response_model=SupplierResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create supplier (Admin only)",
+    summary="Create supplier (Admin and Store Manager)",
 )
 def create_supplier(
     request: SupplierCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return SupplierService.create_supplier(db, request)
 
@@ -57,13 +57,13 @@ def get_supplier(
     "/{supplier_id}",
     response_model=SupplierResponse,
     status_code=status.HTTP_200_OK,
-    summary="Update supplier (Admin only)",
+    summary="Update supplier (Admin and Store Manager)",
 )
 def update_supplier(
     supplier_id: str,
     request: SupplierUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return SupplierService.update_supplier(db, supplier_id, request)
 
@@ -72,11 +72,11 @@ def update_supplier(
     "/{supplier_id}/toggle-status",
     response_model=SupplierResponse,
     status_code=status.HTTP_200_OK,
-    summary="Toggle supplier active status (Admin only)",
+    summary="Toggle supplier active status (Admin and Store Manager)",
 )
 def toggle_status(
     supplier_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return SupplierService.toggle_status(db, supplier_id)

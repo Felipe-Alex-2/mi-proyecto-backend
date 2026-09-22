@@ -2,10 +2,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.season import SeasonCreate, SeasonUpdate, SeasonResponse
 from app.services.season_service import SeasonService
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, require_admin, require_roles
 
 router = APIRouter(prefix="/seasons", tags=["Seasons & Collections"])
 
@@ -30,12 +30,12 @@ def list_seasons(
     "",
     response_model=SeasonResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create season (Admin only)",
+    summary="Create season (Admin and Store Manager)",
 )
 def create_season(
     request: SeasonCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     season = SeasonService.create_season(db, request)
     return SeasonService.format_response(season)
@@ -60,13 +60,13 @@ def get_season(
     "/{season_id}",
     response_model=SeasonResponse,
     status_code=status.HTTP_200_OK,
-    summary="Update season (Admin only)",
+    summary="Update season (Admin and Store Manager)",
 )
 def update_season(
     season_id: str,
     request: SeasonUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     season = SeasonService.update_season(db, season_id, request)
     return SeasonService.format_response(season)
@@ -76,12 +76,12 @@ def update_season(
     "/{season_id}/toggle-status",
     response_model=SeasonResponse,
     status_code=status.HTTP_200_OK,
-    summary="Toggle season active status (Admin only)",
+    summary="Toggle season active status (Admin and Store Manager)",
 )
 def toggle_status(
     season_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     season = SeasonService.toggle_status(db, season_id)
     return SeasonService.format_response(season)

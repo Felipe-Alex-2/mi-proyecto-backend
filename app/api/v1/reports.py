@@ -20,7 +20,7 @@ router = APIRouter(prefix="/reports", tags=["Dashboards and Reports (CU19)"])
 def generate_report(
     payload: ReportRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER, UserRole.CUSTOMER)),
 ):
     return ReportService.generate(db=db, request=payload)
 
@@ -34,7 +34,7 @@ def generate_report(
 def generate_voice_report(
     payload: VoiceReportRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER, UserRole.CUSTOMER)),
 ):
     interpretation, report = GeminiReportService.generate(db=db, transcript=payload.transcript)
     return VoiceReportResponse(

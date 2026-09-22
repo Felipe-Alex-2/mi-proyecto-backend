@@ -15,7 +15,8 @@ from app.schemas.catalog_attribute import (
     ColorResponse,
 )
 from app.services.catalog_attribute_service import CatalogAttributeService
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, require_admin, require_roles
+from app.models.user import UserRole
 
 router = APIRouter(prefix="/attributes", tags=["Catalog Attributes"])
 
@@ -47,7 +48,7 @@ def list_categories(
 def create_category(
     request: CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.create_category(db, request)
 
@@ -62,7 +63,7 @@ def update_category(
     category_id: str,
     request: CategoryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.update_category(db, category_id, request)
 
@@ -76,7 +77,7 @@ def update_category(
 def toggle_category_status(
     category_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.toggle_category_status(db, category_id)
 
@@ -108,7 +109,7 @@ def list_sizes(
 def create_size(
     request: SizeCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.create_size(db, request)
 
@@ -123,7 +124,7 @@ def update_size(
     size_id: str,
     request: SizeUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.update_size(db, size_id, request)
 
@@ -137,7 +138,7 @@ def update_size(
 def toggle_size_status(
     size_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.toggle_size_status(db, size_id)
 
@@ -169,7 +170,7 @@ def list_colors(
 def create_color(
     request: ColorCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.create_color(db, request)
 
@@ -184,7 +185,7 @@ def update_color(
     color_id: str,
     request: ColorUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.update_color(db, color_id, request)
 
@@ -198,6 +199,6 @@ def update_color(
 def toggle_color_status(
     color_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     return CatalogAttributeService.toggle_color_status(db, color_id)

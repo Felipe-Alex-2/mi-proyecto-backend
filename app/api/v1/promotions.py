@@ -2,10 +2,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.promotion import PromotionCreate, PromotionUpdate, PromotionResponse
 from app.services.promotion_service import PromotionService
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, require_admin, require_roles
 
 router = APIRouter(prefix="/promotions", tags=["Promotions & Discounts"])
 
@@ -30,12 +30,12 @@ def list_promotions(
     "",
     response_model=PromotionResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create promotion (Admin only)",
+    summary="Create promotion (Admin and Store Manager)",
 )
 def create_promotion(
     request: PromotionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     promotion = PromotionService.create_promotion(db, request)
     return PromotionService.format_response(promotion)
@@ -60,13 +60,13 @@ def get_promotion(
     "/{promotion_id}",
     response_model=PromotionResponse,
     status_code=status.HTTP_200_OK,
-    summary="Update promotion (Admin only)",
+    summary="Update promotion (Admin and Store Manager)",
 )
 def update_promotion(
     promotion_id: str,
     request: PromotionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     promotion = PromotionService.update_promotion(db, promotion_id, request)
     return PromotionService.format_response(promotion)
@@ -76,12 +76,12 @@ def update_promotion(
     "/{promotion_id}/toggle-status",
     response_model=PromotionResponse,
     status_code=status.HTTP_200_OK,
-    summary="Toggle promotion active status (Admin only)",
+    summary="Toggle promotion active status (Admin and Store Manager)",
 )
 def toggle_status(
     promotion_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.STORE_MANAGER)),
 ):
     promotion = PromotionService.toggle_status(db, promotion_id)
     return PromotionService.format_response(promotion)
