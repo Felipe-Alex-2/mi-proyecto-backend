@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.models.category import Category
@@ -37,7 +38,7 @@ class CatalogAttributeService:
     @staticmethod
     def create_category(db: Session, payload: CategoryCreate) -> Category:
         clean_name = payload.name.strip()
-        existing = db.query(Category).filter(Category.name.ilike(clean_name)).first()
+        existing = db.query(Category).filter(func.lower(Category.name) == clean_name.lower()).first()
         if existing:
             raise ConflictException(detail=f"Ya existe una categoría con el nombre '{clean_name}'")
 
@@ -58,7 +59,7 @@ class CatalogAttributeService:
         if payload.name is not None:
             clean_name = payload.name.strip()
             existing = db.query(Category).filter(
-                Category.name.ilike(clean_name),
+                func.lower(Category.name) == clean_name.lower(),
                 Category.id != category_id,
             ).first()
             if existing:
@@ -105,7 +106,7 @@ class CatalogAttributeService:
     @staticmethod
     def create_size(db: Session, payload: SizeCreate) -> Size:
         clean_code = payload.code.strip().upper()
-        existing = db.query(Size).filter(Size.code.ilike(clean_code)).first()
+        existing = db.query(Size).filter(func.lower(Size.code) == clean_code.lower()).first()
         if existing:
             raise ConflictException(detail=f"Ya existe una talla con el código '{clean_code}'")
 
@@ -127,7 +128,7 @@ class CatalogAttributeService:
         if payload.code is not None:
             clean_code = payload.code.strip().upper()
             existing = db.query(Size).filter(
-                Size.code.ilike(clean_code),
+                func.lower(Size.code) == clean_code.lower(),
                 Size.id != size_id,
             ).first()
             if existing:
@@ -179,7 +180,7 @@ class CatalogAttributeService:
         clean_name = payload.name.strip()
         clean_hex = payload.hex_code.strip().upper()
 
-        existing = db.query(Color).filter(Color.name.ilike(clean_name)).first()
+        existing = db.query(Color).filter(func.lower(Color.name) == clean_name.lower()).first()
         if existing:
             raise ConflictException(detail=f"Ya existe un color con el nombre '{clean_name}'")
 
@@ -200,7 +201,7 @@ class CatalogAttributeService:
         if payload.name is not None:
             clean_name = payload.name.strip()
             existing = db.query(Color).filter(
-                Color.name.ilike(clean_name),
+                func.lower(Color.name) == clean_name.lower(),
                 Color.id != color_id,
             ).first()
             if existing:

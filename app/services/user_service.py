@@ -1,5 +1,5 @@
 ﻿from typing import Optional, List, Tuple
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserUpdate, UserCreateAdmin, UserUpdateAdmin
@@ -16,11 +16,11 @@ class UserService:
     @staticmethod
     def get_by_email(db: Session, email: str) -> Optional[User]:
         """Fetch user by email address."""
-        return db.query(User).filter(User.email == email.lower().strip()).first()
+        return db.query(User).filter(func.lower(func.trim(User.email)) == email.lower().strip()).first()
 
     @staticmethod
     def create(db: Session, obj_in: UserCreate) -> User:
-        """Create a new user with hashed password (autoregistration assigns ADMIN by MVP rule)."""
+        """Create a customer account; employee roles require the admin endpoint."""
         clean_email = obj_in.email.lower().strip()
         existing = UserService.get_by_email(db, clean_email)
         if existing:
@@ -31,7 +31,7 @@ class UserService:
             hashed_password=get_password_hash(obj_in.password),
             full_name=obj_in.full_name.strip(),
             phone=getattr(obj_in, "phone", None),
-            role=UserRole.ADMIN.value,
+            role=UserRole.CUSTOMER.value,
             is_active=True,
             is_verified=False,
         )
@@ -54,6 +54,10 @@ class UserService:
                 db_obj.email = clean_email
         if getattr(obj_in, "phone", None) is not None:
             db_obj.phone = obj_in.phone.strip() if obj_in.phone else None
+        if obj_in.avatar_id is not None:
+            db_obj.avatar_id = obj_in.avatar_id
+        if 'profile_photo' in obj_in.model_fields_set:
+            db_obj.profile_photo = obj_in.profile_photo
         if obj_in.password is not None:
             db_obj.hashed_password = get_password_hash(obj_in.password)
 

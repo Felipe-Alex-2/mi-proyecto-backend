@@ -1,5 +1,5 @@
 from typing import List
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.models.cart_item import CartItem
 from app.models.product_variant import ProductVariant
 from app.models.product import Product
@@ -16,7 +16,12 @@ from app.core.exceptions import NotFoundException, BadRequestException
 class CartService:
     @classmethod
     def get_cart(cls, db: Session, user_id: str) -> CartResponse:
-        items = db.query(CartItem).filter(CartItem.user_id == user_id).order_by(CartItem.added_at.desc()).all()
+        items = db.query(CartItem).options(
+            joinedload(CartItem.variant).joinedload(ProductVariant.product).joinedload(Product.promotion),
+            joinedload(CartItem.variant).joinedload(ProductVariant.size),
+            joinedload(CartItem.variant).joinedload(ProductVariant.color),
+            joinedload(CartItem.variant).selectinload(ProductVariant.stocks),
+        ).filter(CartItem.user_id == user_id).order_by(CartItem.added_at.desc()).all()
         response_items: List[CartItemResponse] = []
         total_items = 0
         total_amount = 0.0
@@ -42,8 +47,7 @@ class CartService:
             total_amount += subtotal
 
             # Total stock across all branches for this variant
-            stocks = db.query(Stock).filter(Stock.variant_id == v.id).all()
-            available_stock = sum(s.quantity for s in stocks)
+            available_stock = sum(s.quantity for s in v.stocks)
 
             resp_item = CartItemResponse(
                 id=item.id,

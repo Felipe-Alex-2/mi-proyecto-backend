@@ -1,3 +1,4 @@
+from app.services.product_loading import product_load_options
 import json
 import re
 from typing import Any, Dict, Optional, Tuple
@@ -76,7 +77,7 @@ La frase del cliente es: {message}
         season = cls._find_name(db, Season, interpretation.season)
         size = cls._find_name(db, Size, interpretation.size)
 
-        query = db.query(Product).filter(Product.is_active == True)
+        query = db.query(Product).options(*product_load_options()).filter(Product.is_active == True)
         if category:
             query = query.filter(Product.category_id == category.id)
         if season:

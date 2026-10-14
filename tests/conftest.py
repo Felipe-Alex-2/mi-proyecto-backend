@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 import os
 import sys
@@ -8,15 +9,26 @@ import sys
 # Ensure backend root is in sys.path
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Never run startup migrations or contact the configured application database
+# while collecting/running tests. Each test owns an isolated in-memory database.
+os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["AUTO_CREATE_TABLES"] = "false"
+os.environ["SMTP_USER"] = ""
+os.environ["SMTP_PASSWORD"] = ""
+os.environ["PAYPAL_CLIENT_ID"] = ""
+os.environ["PAYPAL_CLIENT_SECRET"] = ""
+os.environ["GEMINI_API_KEY"] = ""
+os.environ["VTON_URL"] = ""
+
 from app.database import Base, get_db
 from app.main import app
 from app.models import User, TokenBlacklist, PasswordResetToken, Branch
 
 # Test SQLite database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+SQLALCHEMY_DATABASE_URL = "sqlite://"
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

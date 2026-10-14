@@ -1,7 +1,8 @@
 ﻿from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 from app.models.user import UserRole
+from app.core.profile_images import normalize_profile_photo
 from app.core.validators import (
     validate_password_strength,
     validate_not_blank,
@@ -13,7 +14,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: str
     phone: Optional[str] = None
-    role: Optional[UserRole] = UserRole.ADMIN
+    role: Optional[UserRole] = UserRole.CUSTOMER
 
     @field_validator("full_name")
     @classmethod
@@ -77,8 +78,18 @@ class UserCreateAdmin(BaseModel):
         return validate_not_blank(v, "ID de sucursal")
 
 
-class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
+class ProfileImageUpdate(BaseModel):
+    avatar_id: Optional[Literal['terracotta', 'sage', 'sand']] = None
+    profile_photo: Optional[str] = Field(None, max_length=700000)
+
+    @field_validator('profile_photo')
+    @classmethod
+    def check_photo(cls, value):
+        return normalize_profile_photo(value)
+
+
+class UserUpdate(ProfileImageUpdate):
+    full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     password: Optional[str] = None
@@ -86,7 +97,7 @@ class UserUpdate(BaseModel):
     @field_validator("full_name")
     @classmethod
     def check_full_name(cls, v: Optional[str]) -> Optional[str]:
-        return validate_not_blank(v, "nombre completo")
+        return validate_required_string(v, "nombre completo", 2) if v is not None else v
 
     @field_validator("phone")
     @classmethod
@@ -102,7 +113,7 @@ class UserUpdate(BaseModel):
 
 
 class UserUpdateAdmin(BaseModel):
-    full_name: Optional[str] = None
+    full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     role: Optional[UserRole] = None
@@ -113,7 +124,7 @@ class UserUpdateAdmin(BaseModel):
     @field_validator("full_name")
     @classmethod
     def check_full_name(cls, v: Optional[str]) -> Optional[str]:
-        return validate_not_blank(v, "nombre completo")
+        return validate_required_string(v, "nombre completo", 2) if v is not None else v
 
     @field_validator("phone")
     @classmethod
@@ -134,6 +145,8 @@ class UserUpdateAdmin(BaseModel):
 
 
 class UserResponse(BaseModel):
+    avatar_id: str = 'terracotta'
+    profile_photo: Optional[str] = None
     id: str
     email: EmailStr
     full_name: str

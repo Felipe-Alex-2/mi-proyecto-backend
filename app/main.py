@@ -9,6 +9,7 @@ from app.middleware.error_handler import (
     general_exception_handler,
 )
 from app.database import engine, Base
+from sqlalchemy.exc import SQLAlchemyError
 import app.models  # Ensure all models are registered with Base
 
 
@@ -17,22 +18,39 @@ import logging
 logger = logging.getLogger("api")
 
 
+def _execute_startup_sql(conn, statement):
+    if conn.dialect.name != 'postgresql':
+        return
+    # A failed optional migration must not abort every subsequent statement in
+    # PostgreSQL's transaction. A savepoint rolls back only that statement.
+    try:
+        from sqlalchemy import text
+        with conn.begin_nested():
+            conn.execute(text(statement))
+    except SQLAlchemyError:
+        logger.warning("Optional startup migration failed", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not settings.AUTO_CREATE_TABLES:
+        yield
+        return
     # Ensure tables are created if not running with migrations or in tests
     try:
         Base.metadata.create_all(bind=engine)
-        from sqlalchemy import text
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'ADMIN' NOT NULL;"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_id VARCHAR(36) REFERENCES branches(id);"))
+            _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'CUSTOMER' NOT NULL;")
+            _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_id VARCHAR(16) DEFAULT 'terracotta' NOT NULL;")
+            _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT;")
+            _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);")
+            _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_id VARCHAR(36) REFERENCES branches(id);")
             try:
-                conn.execute(text("ALTER TABLE products ALTER COLUMN image_url TYPE TEXT;"))
+                _execute_startup_sql(conn, "ALTER TABLE products ALTER COLUMN image_url TYPE TEXT;")
             except Exception:
                 pass
             try:
-                conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS promotion_id VARCHAR(36) REFERENCES promotions(id);"))
+                _execute_startup_sql(conn, "ALTER TABLE products ADD COLUMN IF NOT EXISTS promotion_id VARCHAR(36) REFERENCES promotions(id);")
             except Exception:
                 pass
             
@@ -146,7 +164,7 @@ async def lifespan(app: FastAPI):
                 "CREATE INDEX IF NOT EXISTS ix_vton_user_id ON virtual_fitting_sessions (user_id);",
             ]:
                 try:
-                    conn.execute(text(col_sql))
+                    _execute_startup_sql(conn, col_sql)
                 except Exception:
                     pass
             conn.commit()

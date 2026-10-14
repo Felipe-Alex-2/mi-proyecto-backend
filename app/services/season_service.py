@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+from sqlalchemy import func
 from datetime import date
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -46,7 +48,7 @@ class SeasonService:
     @staticmethod
     def create_season(db: Session, payload: SeasonCreate) -> Season:
         clean_name = payload.name.strip()
-        existing = db.query(Season).filter(Season.name.ilike(clean_name)).first()
+        existing = db.query(Season).filter(func.lower(Season.name) == clean_name.lower()).first()
         if existing:
             raise ConflictException(detail=f"Ya existe una temporada con el nombre '{clean_name}'")
 
@@ -65,11 +67,15 @@ class SeasonService:
     @staticmethod
     def update_season(db: Session, season_id: str, payload: SeasonUpdate) -> Season:
         season = SeasonService.get_season_by_id(db, season_id)
+        start = payload.start_date or season.start_date
+        end = payload.end_date or season.end_date
+        if end < start:
+            raise HTTPException(status_code=422, detail='La fecha de fin no puede ser anterior a la fecha de inicio')
 
         if payload.name is not None:
             clean_name = payload.name.strip()
             existing = db.query(Season).filter(
-                Season.name.ilike(clean_name),
+                func.lower(Season.name) == clean_name.lower(),
                 Season.id != season_id,
             ).first()
             if existing:

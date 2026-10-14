@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Auth API"
     SEED_USERS: str = ""
     ENVIRONMENT: str = "development"
+    AUTO_CREATE_TABLES: bool = True
 
     # Database
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/probando_1_db"
@@ -43,8 +44,8 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "FashionStore"
 
     # PayPal Sandbox
-    PAYPAL_CLIENT_ID: str = "BAAgAP2YtTQ2bAYxpfmeNidhSjKcagiXNSy-Y9MO8CCzCi7_uIH4AGjOTUWYzcC_b-R49TE3xgGtE4ZfnM"
-    PAYPAL_CLIENT_SECRET: str = "EMXqvch3aLQqllX03PFwnasRL_FfFabn5JLTbr7PUj3KlLLM7dohH9Fyzya55wFlNPE9e5Whr8K7DPyE"
+    PAYPAL_CLIENT_ID: str = ""
+    PAYPAL_CLIENT_SECRET: str = ""
     PAYPAL_BASE_URL: str = "https://api-m.sandbox.paypal.com"
     PAYPAL_CURRENCY: str = "USD"
     FRONTEND_URL: str = "http://localhost:4200"

@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+from sqlalchemy import func
 from datetime import date
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -47,7 +49,7 @@ class PromotionService:
     @staticmethod
     def create_promotion(db: Session, payload: PromotionCreate) -> Promotion:
         clean_name = payload.name.strip()
-        existing = db.query(Promotion).filter(Promotion.name.ilike(clean_name)).first()
+        existing = db.query(Promotion).filter(func.lower(Promotion.name) == clean_name.lower()).first()
         if existing:
             raise ConflictException(detail=f"Ya existe una promoción con el nombre '{clean_name}'")
 
@@ -67,11 +69,15 @@ class PromotionService:
     @staticmethod
     def update_promotion(db: Session, promotion_id: str, payload: PromotionUpdate) -> Promotion:
         promotion = PromotionService.get_promotion_by_id(db, promotion_id)
+        start = payload.start_date or promotion.start_date
+        end = payload.end_date or promotion.end_date
+        if end < start:
+            raise HTTPException(status_code=422, detail='La fecha de fin no puede ser anterior a la fecha de inicio')
 
         if payload.name is not None:
             clean_name = payload.name.strip()
             existing = db.query(Promotion).filter(
-                Promotion.name.ilike(clean_name),
+                func.lower(Promotion.name) == clean_name.lower(),
                 Promotion.id != promotion_id,
             ).first()
             if existing:

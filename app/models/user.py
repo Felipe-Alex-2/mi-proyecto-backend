@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, String, ForeignKey
+from sqlalchemy import Boolean, Column, DateTime, String, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -20,7 +20,9 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
-    role = Column(String(50), default=UserRole.ADMIN.value, nullable=False, index=True)
+    role = Column(String(50), default=UserRole.CUSTOMER.value, nullable=False, index=True)
+    avatar_id = Column(String(16), nullable=False, default='terracotta', server_default='terracotta')
+    profile_photo = Column(Text, nullable=True)
     phone = Column(String(50), nullable=True)
     branch_id = Column(String(36), ForeignKey("branches.id"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)

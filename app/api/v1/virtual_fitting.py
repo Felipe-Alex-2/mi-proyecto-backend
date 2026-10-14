@@ -134,7 +134,10 @@ async def idm_virtual_tryon(
     garment_filename = garment_image.filename or "garment.jpg"
 
     try:
-        result_bytes = run_tryon_from_bytes(
+        # Gradio inference and Pillow processing are synchronous and can take
+        # minutes. Keep the event loop free to serve the rest of the application.
+        from starlette.concurrency import run_in_threadpool
+        result_bytes = await run_in_threadpool(run_tryon_from_bytes,
             person_image_bytes=person_bytes,
             person_filename=person_filename,
             garment_image_bytes=garment_bytes,

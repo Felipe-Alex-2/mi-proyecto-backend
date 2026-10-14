@@ -17,6 +17,7 @@ from app.schemas.catalog import (
     CatalogProductListResponse,
 )
 from app.core.exceptions import NotFoundException
+from app.services.product_loading import product_load_options
 
 
 class CatalogService:
@@ -65,7 +66,7 @@ class CatalogService:
 
         for v in product.variants:
             stocks_by_branch = {
-                s.branch_id: s for s in db.query(Stock).filter(Stock.variant_id == v.id).all()
+                s.branch_id: s for s in v.stocks
             }
 
             branch_stocks: List[CatalogVariantBranchStock] = []
@@ -202,7 +203,7 @@ class CatalogService:
 
         total = query.count()
         offset = (page - 1) * page_size
-        products = query.offset(offset).limit(page_size).all()
+        products = query.options(*product_load_options()).offset(offset).limit(page_size).all()
 
         active_branches = db.query(Branch).filter(Branch.is_active == True).all()
         items = [cls._format_product(db, p, active_branches) for p in products]
@@ -216,7 +217,7 @@ class CatalogService:
 
     @classmethod
     def get_product(cls, db: Session, product_id: str) -> CatalogProductDetailResponse:
-        product = db.query(Product).filter(Product.id == product_id, Product.is_active == True).first()
+        product = db.query(Product).options(*product_load_options()).filter(Product.id == product_id, Product.is_active == True).first()
         if not product:
             raise NotFoundException(detail="Producto no encontrado en el catálogo")
 

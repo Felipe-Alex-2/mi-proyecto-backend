@@ -5,6 +5,7 @@ from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from app.models.branch import Branch
 from app.models.category import Category
 from app.models.color import Color
 from app.models.product import Product
@@ -21,6 +22,7 @@ from app.schemas.product import (
     ProductVariantResponse,
 )
 from app.schemas.stock import StockResponse
+from app.services.product_loading import product_load_options
 
 
 class ProductService:
@@ -33,7 +35,7 @@ class ProductService:
 
         sku = base_sku
         counter = 1
-        while db.query(ProductVariant).filter(ProductVariant.sku == sku).first():
+        while db.query(ProductVariant).filter(func.lower(ProductVariant.sku) == sku.lower()).first():
             sku = f"{base_sku}-{counter}"
             counter += 1
         return sku
@@ -79,6 +81,12 @@ class ProductService:
                     detail="La promoción especificada no existe"
                 )
 
+        branch_ids = {branch_id for variant in payload.variants for branch_id in (variant.initial_stock or {})}
+        if branch_ids:
+            known_branches = {row[0] for row in db.query(Branch.id).filter(Branch.id.in_(branch_ids)).all()}
+            if branch_ids - known_branches:
+                raise HTTPException(status_code=404, detail='Una sucursal del stock inicial no existe')
+
         product = Product(
             name=clean_name,
             description=payload.description.strip() if payload.description else None,
@@ -113,7 +121,7 @@ class ProductService:
             if not sku:
                 sku = ProductService._generate_sku(product.name, size.code, color.name, db)
             else:
-                existing_sku = db.query(ProductVariant).filter(ProductVariant.sku == sku).first()
+                existing_sku = db.query(ProductVariant).filter(func.lower(ProductVariant.sku) == sku.lower()).first()
                 if existing_sku:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -217,7 +225,7 @@ class ProductService:
         search: Optional[str] = None,
         is_active: Optional[bool] = None,
     ) -> List[ProductResponse]:
-        query = db.query(Product)
+        query = db.query(Product).options(*product_load_options())
 
         if category_id:
             query = query.filter(Product.category_id == category_id)
@@ -236,7 +244,7 @@ class ProductService:
 
     @staticmethod
     def get_product_by_id(db: Session, product_id: str) -> ProductResponse:
-        product = db.query(Product).filter(Product.id == product_id).first()
+        product = db.query(Product).options(*product_load_options()).filter(Product.id == product_id).first()
         if not product:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

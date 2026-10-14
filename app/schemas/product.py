@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from app.schemas.stock import StockResponse
 from app.core.validators import validate_required_string, validate_not_blank
 
@@ -8,8 +8,8 @@ from app.core.validators import validate_required_string, validate_not_blank
 class VariantCreate(BaseModel):
     size_id: str
     color_id: str
-    sku: Optional[str] = None
-    price_override: Optional[float] = Field(None, gt=0)
+    sku: Optional[str] = Field(None, max_length=60)
+    price_override: Optional[float] = Field(None, gt=0, allow_inf_nan=False)
     initial_stock: Optional[Dict[str, int]] = Field(default_factory=dict, description="Diccionario branch_id -> cantidad")
 
     @field_validator("size_id")
@@ -21,6 +21,13 @@ class VariantCreate(BaseModel):
     @classmethod
     def check_color_id(cls, v: str) -> str:
         return validate_required_string(v, "ID de color", 1)
+
+    @field_validator('initial_stock')
+    @classmethod
+    def check_stock(cls, value):
+        if value and any(not key.strip() or quantity < 0 for key, quantity in value.items()):
+            raise ValueError('El stock requiere sucursales válidas y cantidades no negativas.')
+        return value
 
     @field_validator("sku")
     @classmethod
@@ -49,7 +56,7 @@ class ProductVariantResponse(BaseModel):
 class ProductCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=150)
     description: Optional[str] = None
-    price: float = Field(..., gt=0)
+    price: float = Field(..., gt=0, allow_inf_nan=False)
     category_id: str
     season_id: Optional[str] = None
     supplier_id: Optional[str] = None
@@ -57,6 +64,14 @@ class ProductCreate(BaseModel):
     image_url: Optional[str] = None
     gender: str = Field("UNISEX", description="HOMBRE, MUJER, UNISEX, NIÑOS")
     variants: List[VariantCreate] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def check_duplicate_variants(self):
+        combinations = [(v.size_id, v.color_id) for v in self.variants]
+        skus = [v.sku.casefold() for v in self.variants if v.sku]
+        if len(set(combinations)) != len(combinations) or len(set(skus)) != len(skus):
+            raise ValueError('No repitas la combinación de talla/color ni el SKU de las variantes.')
+        return self
 
     @field_validator("name")
     @classmethod
@@ -82,7 +97,7 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=150)
     description: Optional[str] = None
-    price: Optional[float] = Field(None, gt=0)
+    price: Optional[float] = Field(None, gt=0, allow_inf_nan=False)
     category_id: Optional[str] = None
     season_id: Optional[str] = None
     supplier_id: Optional[str] = None

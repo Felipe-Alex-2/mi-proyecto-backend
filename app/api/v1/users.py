@@ -89,7 +89,7 @@ def create_user(
         db=db,
         user=current_user,
         action="CREAR_USUARIO",
-        description=f"Administrador creó cuenta para {created.email} con rol {created.role.name if created.role else 'USUARIO'}",
+        description=f"Administrador creó cuenta para {created.email} con rol {created.role if created.role else 'USUARIO'}",
         category="ADMINISTRACION",
     )
     return created
