@@ -1,3 +1,4 @@
+from app.core.transactions import commit_or_flush
 from typing import Optional
 
 from fastapi import Request
@@ -28,7 +29,7 @@ class ActivityLogService:
             ip_address=ip_address,
         )
         db.add(log)
-        db.commit()
+        commit_or_flush(db)
         db.refresh(log)
         return log
 
@@ -52,10 +53,12 @@ class ActivityLogService:
                 ip_address=ip_address,
             )
             db.add(log)
-            db.commit()
+            commit_or_flush(db)
             db.refresh(log)
             return log
         except Exception:
+            if db.info.get("sync_atomic"):
+                raise
             db.rollback()
             return None
 

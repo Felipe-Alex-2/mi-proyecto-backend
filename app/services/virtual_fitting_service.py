@@ -1,3 +1,4 @@
+from app.core.transactions import commit_or_flush
 import os
 import json
 import uuid
@@ -54,7 +55,7 @@ class VirtualFittingService:
             if data.photo_url:
                 profile.photo_url = data.photo_url
 
-        db.commit()
+        commit_or_flush(db)
         db.refresh(profile)
         return profile
 
@@ -154,7 +155,7 @@ class VirtualFittingService:
             status="COMPLETED",
         )
         db.add(session)
-        db.commit()
+        commit_or_flush(db)
         db.refresh(session)
 
         return TryOnResponse(

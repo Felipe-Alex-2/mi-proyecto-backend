@@ -52,3 +52,5 @@ __all__ = [
     "SizeGuide",
     "VirtualFittingSession",
 ]
+
+from app.models.sync_operation import SyncOperation

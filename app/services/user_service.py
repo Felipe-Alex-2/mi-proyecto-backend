@@ -1,4 +1,5 @@
-﻿from typing import Optional, List, Tuple
+from app.core.transactions import commit_or_flush
+from typing import Optional, List, Tuple
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from app.models.user import User, UserRole
@@ -36,7 +37,7 @@ class UserService:
             is_verified=False,
         )
         db.add(db_obj)
-        db.commit()
+        commit_or_flush(db)
         db.refresh(db_obj)
         return db_obj
 
@@ -62,7 +63,7 @@ class UserService:
             db_obj.hashed_password = get_password_hash(obj_in.password)
 
         db.add(db_obj)
-        db.commit()
+        commit_or_flush(db)
         db.refresh(db_obj)
         return db_obj
 
@@ -115,7 +116,7 @@ class UserService:
             is_verified=True,
         )
         db.add(db_obj)
-        db.commit()
+        commit_or_flush(db)
         db.refresh(db_obj)
         return db_obj
 
@@ -144,7 +145,7 @@ class UserService:
             db_obj.hashed_password = get_password_hash(obj_in.password)
 
         db.add(db_obj)
-        db.commit()
+        commit_or_flush(db)
         db.refresh(db_obj)
         return db_obj
 
@@ -156,6 +157,6 @@ class UserService:
 
         db_obj.is_active = not db_obj.is_active
         db.add(db_obj)
-        db.commit()
+        commit_or_flush(db)
         db.refresh(db_obj)
         return db_obj

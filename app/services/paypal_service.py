@@ -43,6 +43,7 @@ class PayPalService:
         return_url: Optional[str] = None,
         cancel_url: Optional[str] = None,
         custom_id: Optional[str] = None,
+        request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         access_token = PayPalService._get_access_token()
         curr = currency or settings.PAYPAL_CURRENCY or "USD"
@@ -86,6 +87,7 @@ class PayPalService:
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
+                **({"PayPal-Request-Id": request_id} if request_id else {}),
             },
             json=order_payload,
             timeout=30.0,
@@ -127,16 +129,21 @@ class PayPalService:
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
+                "PayPal-Request-Id": f"capture-{order_id}",
             },
             timeout=30.0,
         )
 
         if response.status_code not in (200, 201):
-            logger.error(f"Error capturando PayPal {order_id}: {response.status_code} — {response.text}")
-            raise Exception(f"Error al capturar orden PayPal: {response.text}")
-
-        data = response.json()
-        status = data.get("status", "UNKNOWN")
+            error = response.json()
+            already_captured = any(item.get("issue") == "ORDER_ALREADY_CAPTURED" for item in error.get("details", []))
+            if not already_captured:
+                logger.error(f"Error capturando PayPal {order_id}: {response.status_code}")
+                raise Exception("PayPal no confirmó el cobro. Revisa la autorización del pago.")
+            data = PayPalService.get_order(order_id)
+        else:
+            data = response.json()
+        status = "UNKNOWN"
 
         capture_id: Optional[str] = None
         purchase_units = data.get("purchase_units", [])
@@ -144,6 +151,7 @@ class PayPalService:
             captures = purchase_units[0].get("payments", {}).get("captures", [])
             if captures:
                 capture_id = captures[0].get("id")
+                status = captures[0].get("status", "UNKNOWN")
 
         return {
             "order_id": order_id,

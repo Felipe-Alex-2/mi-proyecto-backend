@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models.reservation import ReservationStatus
 
@@ -13,7 +13,7 @@ class ReservationCreate(BaseModel):
     branch_id: str = Field(..., description="Sucursal donde se realizará la prueba")
     items: List[ReservationItemCreate] = Field(..., min_length=1, max_length=50, description="Prendas a reservar")
     customer_notes: Optional[str] = Field(None, max_length=500, description="Notas o comentarios del cliente")
-    payment_method: Optional[str] = Field("EFECTIVO", description="Método de pago: EFECTIVO o PAYPAL")
+    payment_method: Optional[Literal["EFECTIVO", "PAYPAL"]] = Field("EFECTIVO", description="Método de pago: EFECTIVO o PAYPAL")
 
 
 class ReservationStatusUpdate(BaseModel):

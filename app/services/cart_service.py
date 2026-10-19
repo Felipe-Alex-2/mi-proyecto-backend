@@ -1,3 +1,4 @@
+from app.core.transactions import commit_or_flush
 from typing import List
 from sqlalchemy.orm import Session, joinedload
 from app.models.cart_item import CartItem
@@ -101,7 +102,7 @@ class CartService:
             )
             db.add(new_item)
 
-        db.commit()
+        commit_or_flush(db)
         return cls.get_cart(db, user_id)
 
     @classmethod
@@ -113,7 +114,7 @@ class CartService:
             raise NotFoundException(detail="Item del carrito no encontrado")
 
         item.quantity = data.quantity
-        db.commit()
+        commit_or_flush(db)
         return cls.get_cart(db, user_id)
 
     @classmethod
@@ -123,11 +124,11 @@ class CartService:
             raise NotFoundException(detail="Item del carrito no encontrado")
 
         db.delete(item)
-        db.commit()
+        commit_or_flush(db)
         return cls.get_cart(db, user_id)
 
     @classmethod
     def clear_cart(cls, db: Session, user_id: str) -> CartResponse:
         db.query(CartItem).filter(CartItem.user_id == user_id).delete()
-        db.commit()
+        commit_or_flush(db)
         return CartResponse(items=[], total_items=0, total_amount=0.0)

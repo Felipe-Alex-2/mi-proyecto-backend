@@ -19,6 +19,32 @@ from app.services.reservation_service import ReservationService
 router = APIRouter(prefix="/reservations", tags=["In-Store Try-On Reservations (CU13)"])
 
 
+@router.post("/{id}/paypal-order", response_model=PayPalOrderResponse)
+def pay_existing_reservation(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Resume an offline payment intent without creating another reservation."""
+    from datetime import datetime, timezone
+    from fastapi import HTTPException
+    from app.models.reservation import Reservation
+    from app.services.paypal_service import PayPalService
+    r = db.query(Reservation).filter(Reservation.id == id).with_for_update().first()
+    if not r or r.customer_id != current_user.id:
+        raise HTTPException(404, "Reserva no encontrada")
+    expires = r.expires_at.replace(tzinfo=timezone.utc) if r.expires_at.tzinfo is None else r.expires_at
+    if r.status not in ("PENDING", "CONFIRMED") or r.payment_status == "PAID" or expires <= datetime.now(timezone.utc):
+        raise HTTPException(409, "Esta reserva ya no admite pagos")
+    if r.paypal_order_id:
+        order = PayPalService.get_order(r.paypal_order_id)
+        approval = next((link['href'] for link in order.get('links', []) if link.get('rel') in ('approve','payer-action')), None)
+        if not approval:
+            raise HTTPException(409, "La orden ya fue aprobada o necesita verificarse. Consulta el pago antes de continuar.")
+        return {"order_id":r.paypal_order_id,"approval_url":approval,"reservation":ReservationService._enrich_reservation(r)}
+    result = PayPalService.create_order(amount=float(r.total_amount), description=f"Reserva {r.reservation_code}", custom_id=r.id, request_id=r.id)
+    r.paypal_order_id = result['order_id']
+    r.payment_method = 'PAYPAL'
+    db.commit()
+    return {**result,"reservation":ReservationService._enrich_reservation(r)}
+
+
 @router.post(
     "",
     response_model=ReservationResponse,

@@ -1,3 +1,4 @@
+from app.core.transactions import commit_or_flush
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -49,7 +50,7 @@ class NotificationService:
             created_at=datetime.now(timezone.utc),
         )
         db.add(notif)
-        db.commit()
+        commit_or_flush(db)
         db.refresh(notif)
         return notif
 
@@ -114,7 +115,7 @@ class NotificationService:
             raise NotFoundException(detail="Notificación no encontrada")
 
         notif.is_read = True
-        db.commit()
+        commit_or_flush(db)
         db.refresh(notif)
         return notif
 
@@ -125,5 +126,5 @@ class NotificationService:
             .filter(Notification.user_id == user.id, Notification.is_read.is_(False))
             .update({"is_read": True}, synchronize_session=False)
         )
-        db.commit()
+        commit_or_flush(db)
         return count

@@ -42,3 +42,6 @@ api_v1_router.include_router(notifications_router)
 api_v1_router.include_router(virtual_fitting_router)
 
 
+
+from app.api.v1.sync import router as sync_router
+api_v1_router.include_router(sync_router)

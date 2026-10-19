@@ -1,9 +1,11 @@
+from app.core.transactions import commit_or_flush
 import uuid
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from sqlalchemy.orm import Session
+from sqlalchemy import update
 
 logger = logging.getLogger("reservations")
 from app.models.reservation import Reservation, ReservationStatus
@@ -35,6 +37,14 @@ from app.core.exceptions import (
 
 
 class ReservationService:
+    @staticmethod
+    def _lock_allocation(db, customer_id, data):
+        db.query(User).filter(User.id == customer_id).with_for_update().first()
+        ids = sorted({item.variant_id for item in data.items})
+        if len(ids) != len(data.items):
+            raise BadRequestException(detail="No repitas una variante en la misma reserva")
+        db.query(Stock).filter(Stock.branch_id == data.branch_id, Stock.variant_id.in_(ids)).order_by(Stock.variant_id).with_for_update().populate_existing().all()
+
     @staticmethod
     def _enrich_reservation(r: Reservation) -> ReservationResponse:
         items_resp: List[ReservationItemResponse] = []
@@ -111,6 +121,7 @@ class ReservationService:
         customer: User,
         data: ReservationCreate,
     ) -> ReservationResponse:
+        cls._lock_allocation(db, customer.id, data)
         # Check active reservations count
         active_count = (
             db.query(Reservation)
@@ -202,7 +213,12 @@ class ReservationService:
                 .first()
             )
             if stock:
-                stock.quantity = max(0, stock.quantity - item_in.quantity)
+                changed = db.execute(update(Stock).where(
+                    Stock.id == stock.id, Stock.quantity >= item_in.quantity
+                ).values(quantity=Stock.quantity - item_in.quantity).execution_options(synchronize_session=False)).rowcount
+                if changed != 1:
+                    raise BadRequestException(detail="Otra reserva obtuvo primero estas prendas. Stock insuficiente.")
+                db.expire(stock)
 
             res_item = ReservationItem(
                 reservation_id=reservation.id,
@@ -218,7 +234,7 @@ class ReservationService:
                 CartItem.variant_id.in_(variant_ids_in_reservation),
             ).delete(synchronize_session=False)
 
-        db.commit()
+        commit_or_flush(db)
         db.refresh(reservation)
 
         ActivityLogService.log_event(
@@ -238,6 +254,7 @@ class ReservationService:
         customer: User,
         data: PayPalReservationOrderCreate,
     ) -> PayPalOrderResponse:
+        cls._lock_allocation(db, customer.id, data)
         # Check active reservations count
         active_count = (
             db.query(Reservation)
@@ -329,7 +346,12 @@ class ReservationService:
                 .first()
             )
             if stock:
-                stock.quantity = max(0, stock.quantity - item_in.quantity)
+                changed = db.execute(update(Stock).where(
+                    Stock.id == stock.id, Stock.quantity >= item_in.quantity
+                ).values(quantity=Stock.quantity - item_in.quantity).execution_options(synchronize_session=False)).rowcount
+                if changed != 1:
+                    raise BadRequestException(detail="Otra reserva obtuvo primero estas prendas. Stock insuficiente.")
+                db.expire(stock)
 
             res_item = ReservationItem(
                 reservation_id=reservation.id,
@@ -344,7 +366,7 @@ class ReservationService:
                 CartItem.variant_id.in_(variant_ids_in_reservation),
             ).delete(synchronize_session=False)
 
-        db.commit()
+        commit_or_flush(db)
         db.refresh(reservation)
 
         return PayPalOrderResponse(
@@ -360,10 +382,15 @@ class ReservationService:
         user: User,
         paypal_order_id: str,
     ) -> PayPalCaptureResponse:
-        r = db.query(Reservation).filter(Reservation.paypal_order_id == paypal_order_id).first()
+        r = db.query(Reservation).filter(Reservation.paypal_order_id == paypal_order_id).with_for_update().first()
         if not r:
             raise NotFoundException(detail="No se encontró ninguna reserva asociada a esta orden de PayPal")
 
+        role = user.role.value if hasattr(user.role, "value") else str(user.role)
+        if r.customer_id != user.id and role != UserRole.ADMIN.value:
+            raise ForbiddenException(detail="No puedes pagar la reserva de otro cliente")
+        if r.status not in (ReservationStatus.PENDING.value, ReservationStatus.CONFIRMED.value):
+            raise BadRequestException(detail="Esta reserva ya no admite pagos")
         # Idempotent check: if already PAID, return immediately
         if r.payment_status == "PAID":
             return PayPalCaptureResponse(
@@ -373,12 +400,15 @@ class ReservationService:
                 reservation=cls._enrich_reservation(r),
             )
 
+        expires = r.expires_at.replace(tzinfo=timezone.utc) if r.expires_at.tzinfo is None else r.expires_at
+        if expires <= datetime.now(timezone.utc):
+            raise BadRequestException(detail="La reserva venció; revisa su disponibilidad antes de pagar")
         # Call PayPal REST API to capture funds
         capture_data = PayPalService.capture_order(paypal_order_id)
         capture_status = capture_data.get("status", "UNKNOWN")
         capture_id = capture_data.get("capture_id")
 
-        if capture_status in ("COMPLETED", "APPROVED"):
+        if capture_status == "COMPLETED":
             r.payment_status = "PAID"
             r.status = ReservationStatus.CONFIRMED.value
             r.paypal_capture_id = capture_id
@@ -396,7 +426,7 @@ class ReservationService:
                     .first()
                 )
                 if not existing_exit:
-                    stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+                    stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).with_for_update().populate_existing().first()
                     curr_qty = stk.quantity if stk else 0
                     v = item.variant
                     orig_p = float(v.product.price) if (v and v.product and v.product.price) else 0.0
@@ -422,7 +452,7 @@ class ReservationService:
                     )
                     db.add(mov)
 
-            db.commit()
+            commit_or_flush(db)
             db.refresh(r)
 
         return PayPalCaptureResponse(
@@ -467,7 +497,7 @@ class ReservationService:
         reservation_id: str,
         user: User,
     ) -> ReservationResponse:
-        r = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+        r = db.query(Reservation).filter(Reservation.id == reservation_id).with_for_update().first()
         if not r:
             raise NotFoundException(detail="Reserva no encontrada")
 
@@ -487,7 +517,7 @@ class ReservationService:
         user: User,
         data: ReservationStatusUpdate,
     ) -> ReservationResponse:
-        r = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+        r = db.query(Reservation).filter(Reservation.id == reservation_id).with_for_update().first()
         if not r:
             raise NotFoundException(detail="Reserva no encontrada")
 
@@ -532,7 +562,7 @@ class ReservationService:
                     .first()
                 )
                 if not existing_exit:
-                    stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+                    stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).with_for_update().populate_existing().first()
                     curr_qty = stk.quantity if stk else 0
                     mov = InventoryMovement(
                         variant_id=item.variant_id,
@@ -590,7 +620,7 @@ class ReservationService:
         # If cancelling or expiring an active reservation, restore stock and log RETURN movement if previously confirmed
         if target_status in (ReservationStatus.CANCELLED.value, ReservationStatus.EXPIRED.value) and prev_status in (ReservationStatus.PENDING.value, ReservationStatus.CONFIRMED.value):
             for item in r.items:
-                stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+                stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).with_for_update().populate_existing().first()
                 prev_qty = stk.quantity if stk else 0
                 if stk:
                     stk.quantity += item.quantity
@@ -622,7 +652,7 @@ class ReservationService:
         r.status = target_status
         r.staff_notes = notes if notes else None
         r.staff_user_id = user.id
-        db.commit()
+        commit_or_flush(db)
         db.refresh(r)
 
         ActivityLogService.log_event(
@@ -650,12 +680,14 @@ class ReservationService:
         reservation_id: str,
         customer: User,
     ) -> ReservationResponse:
-        r = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+        r = db.query(Reservation).filter(Reservation.id == reservation_id).with_for_update().first()
         if not r:
             raise NotFoundException(detail="Reserva no encontrada")
 
         if r.customer_id != customer.id:
             raise ForbiddenException(detail="No puedes cancelar una reserva de otro cliente")
+        if r.payment_status == "PAID":
+            raise BadRequestException(detail="Esta reserva está pagada. Solicita su cancelación y reembolso en la sucursal.")
 
         if r.status not in (ReservationStatus.PENDING.value, ReservationStatus.CONFIRMED.value):
             raise BadRequestException(
@@ -663,7 +695,7 @@ class ReservationService:
             )
 
         for item in r.items:
-            stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).first()
+            stk = db.query(Stock).filter(Stock.variant_id == item.variant_id, Stock.branch_id == r.branch_id).with_for_update().populate_existing().first()
             prev_qty = stk.quantity if stk else 0
             if stk:
                 stk.quantity += item.quantity
@@ -694,7 +726,7 @@ class ReservationService:
 
         r.status = ReservationStatus.CANCELLED.value
         r.staff_notes = "Cancelada voluntariamente por el cliente desde la app"
-        db.commit()
+        commit_or_flush(db)
         db.refresh(r)
 
         ActivityLogService.log_event(
