@@ -52,13 +52,14 @@ class Settings(BaseSettings):
 
     # CORS — stored as plain str so pydantic-settings never calls json.loads() on it.
     # Railway: set CORS_ORIGINS=https://your-app.com,https://other.com  (comma-separated)
-    # OR leave unset to use the default localhost origins.
+    # OR leave unset to use the default development and Amplify origins.
     CORS_ORIGINS: str = (
         "http://localhost:4200,"
         "http://127.0.0.1:4200,"
         "http://localhost:3000,"
         "http://localhost:8080,"
-        "http://localhost:8000"
+        "http://localhost:8000,"
+        "https://main.d18zy7ngfg3wnx.amplifyapp.com"
     )
 
     @computed_field
