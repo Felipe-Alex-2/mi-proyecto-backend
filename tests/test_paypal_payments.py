@@ -1,19 +1,19 @@
 import pytest
 from unittest.mock import patch
-from app.models.branch import Branch
-from app.models.category import Category
-from app.models.color import Color
-from app.models.product import Product
-from app.models.product_variant import ProductVariant
-from app.models.size import Size
-from app.models.stock import Stock
-from app.models.inventory_movement import InventoryMovement, MovementType
-from app.models.user import User, UserRole
-from app.core.security import get_password_hash, create_access_token
+from app.modelos.sucursal import Sucursal
+from app.modelos.categoria import Categoria
+from app.modelos.color import Color
+from app.modelos.producto import Producto
+from app.modelos.variante_producto import VarianteProducto
+from app.modelos.talla import Talla
+from app.modelos.stock import Stock
+from app.modelos.movimiento_inventario import MovimientoInventario, TipoMovimiento
+from app.modelos.usuario import Usuario, RolUsuario
+from app.nucleo.seguridad import get_password_hash, create_access_token
 
 
 def _create_user(db_session, email, role, full_name, branch_id=None):
-    user = User(
+    user = Usuario(
         email=email,
         hashed_password=get_password_hash("Password123!"),
         full_name=full_name,
@@ -30,18 +30,18 @@ def _create_user(db_session, email, role, full_name, branch_id=None):
 
 
 def _setup_test_catalog(db_session):
-    branch = Branch(name="Sucursal PayPal Test", city="Santa Cruz", address="Av. San Martin")
-    cat = Category(name="Vestidos")
-    sz = Size(name="Large", code="L")
+    branch = Sucursal(name="Sucursal PayPal Test", city="Santa Cruz", address="Av. San Martin")
+    cat = Categoria(name="Vestidos")
+    sz = Talla(name="Large", code="L")
     col = Color(name="Rojo", hex_code="#FF0000")
     db_session.add_all([branch, cat, sz, col])
     db_session.commit()
 
-    prod = Product(name="Vestido de Verano", price=150.0, category_id=cat.id)
+    prod = Producto(name="Vestido de Verano", price=150.0, category_id=cat.id)
     db_session.add(prod)
     db_session.commit()
 
-    variant = ProductVariant(
+    variant = VarianteProducto(
         product_id=prod.id,
         size_id=sz.id,
         color_id=col.id,
@@ -58,7 +58,7 @@ def _setup_test_catalog(db_session):
 
 
 def test_reservation_payment_fields_default_and_complete(client, admin_token, db_session):
-    customer, customer_token = _create_user(db_session, "paypal_cust1@test.com", UserRole.CUSTOMER.value, "Cliente Uno")
+    customer, customer_token = _create_user(db_session, "paypal_cust1@test.com", RolUsuario.CUSTOMER.value, "Cliente Uno")
     branch, variant = _setup_test_catalog(db_session)
 
     # 1. Create reservation with EFECTIVO
@@ -97,9 +97,9 @@ def test_reservation_payment_fields_default_and_complete(client, admin_token, db
     assert updated_data["payment_method"] == "EFECTIVO"
 
     # Verify inventory movement was created and has payment fields
-    mov = db_session.query(InventoryMovement).filter(
-        InventoryMovement.reference_number == updated_data["reservation_code"],
-        InventoryMovement.type == MovementType.EXIT.value,
+    mov = db_session.query(MovimientoInventario).filter(
+        MovimientoInventario.reference_number == updated_data["reservation_code"],
+        MovimientoInventario.type == TipoMovimiento.EXIT.value,
     ).first()
     assert mov is not None
     assert mov.payment_method == "EFECTIVO"
@@ -108,11 +108,11 @@ def test_reservation_payment_fields_default_and_complete(client, admin_token, db
 
 
 def test_paypal_order_create_and_capture(client, db_session):
-    customer, customer_token = _create_user(db_session, "paypal_cust2@test.com", UserRole.CUSTOMER.value, "Cliente Dos")
+    customer, customer_token = _create_user(db_session, "paypal_cust2@test.com", RolUsuario.CUSTOMER.value, "Cliente Dos")
     branch, variant = _setup_test_catalog(db_session)
 
-    with patch("app.services.paypal_service.PayPalService.create_order") as mock_create, \
-         patch("app.services.paypal_service.PayPalService.capture_order") as mock_capture:
+    with patch("app.servicios.paypal_service.PayPalService.create_order") as mock_create, \
+         patch("app.servicios.paypal_service.PayPalService.capture_order") as mock_capture:
         
         mock_create.return_value = {
             "order_id": "TEST-PP-ORDER-123",

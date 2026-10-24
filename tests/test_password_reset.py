@@ -1,8 +1,8 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
-from app.models.password_reset_token import PasswordResetToken
-from app.models.user import User
+from app.modelos.token_restabler_contrasena import TokenRestablecimientoContrasena
+from app.modelos.usuario import Usuario
 
 
 def test_forgot_password_registered_user(client, db_session):
@@ -12,11 +12,11 @@ def test_forgot_password_registered_user(client, db_session):
         json={
             "email": "reset@example.com",
             "password": "OldPassword123!",
-            "full_name": "Reset User",
+            "full_name": "Reset Usuario",
         },
     )
 
-    with patch("app.services.email_service.EmailService.send_reset_token_email", return_value=True) as mock_send:
+    with patch("app.servicios.correo_service.CorreoService.send_reset_token_email", return_value=True) as mock_send:
         response = client.post(
             "/api/v1/auth/forgot-password",
             json={"email": "reset@example.com"},
@@ -26,10 +26,10 @@ def test_forgot_password_registered_user(client, db_session):
         mock_send.assert_called_once()
 
     # Check token in database
-    user = db_session.query(User).filter(User.email == "reset@example.com").first()
+    user = db_session.query(Usuario).filter(Usuario.email == "reset@example.com").first()
     token_record = (
-        db_session.query(PasswordResetToken)
-        .filter(PasswordResetToken.user_id == user.id)
+        db_session.query(TokenRestablecimientoContrasena)
+        .filter(TokenRestablecimientoContrasena.user_id == user.id)
         .first()
     )
     assert token_record is not None
@@ -39,7 +39,7 @@ def test_forgot_password_registered_user(client, db_session):
 
 def test_forgot_password_unregistered_email(client):
     # Non-existent email should return 200 (anti-enumeration) without sending email
-    with patch("app.services.email_service.EmailService.send_reset_token_email") as mock_send:
+    with patch("app.servicios.correo_service.CorreoService.send_reset_token_email") as mock_send:
         response = client.post(
             "/api/v1/auth/forgot-password",
             json={"email": "nonexistent@example.com"},
@@ -55,22 +55,22 @@ def test_reset_password_success(client, db_session):
         json={
             "email": "change@example.com",
             "password": "OldPassword123!",
-            "full_name": "Change User",
+            "full_name": "Change Usuario",
         },
     )
 
     # 2. Request reset
-    with patch("app.services.email_service.EmailService.send_reset_token_email", return_value=True):
+    with patch("app.servicios.correo_service.CorreoService.send_reset_token_email", return_value=True):
         client.post(
             "/api/v1/auth/forgot-password",
             json={"email": "change@example.com"},
         )
 
     # 3. Get token from DB
-    user = db_session.query(User).filter(User.email == "change@example.com").first()
+    user = db_session.query(Usuario).filter(Usuario.email == "change@example.com").first()
     token_record = (
-        db_session.query(PasswordResetToken)
-        .filter(PasswordResetToken.user_id == user.id, PasswordResetToken.is_used == False)
+        db_session.query(TokenRestablecimientoContrasena)
+        .filter(TokenRestablecimientoContrasena.user_id == user.id, TokenRestablecimientoContrasena.is_used == False)
         .first()
     )
     token = token_record.token
@@ -110,20 +110,20 @@ def test_reset_password_single_use(client, db_session):
         json={
             "email": "singleuse@example.com",
             "password": "Password123!",
-            "full_name": "Single User",
+            "full_name": "Single Usuario",
         },
     )
 
-    with patch("app.services.email_service.EmailService.send_reset_token_email", return_value=True):
+    with patch("app.servicios.correo_service.CorreoService.send_reset_token_email", return_value=True):
         client.post(
             "/api/v1/auth/forgot-password",
             json={"email": "singleuse@example.com"},
         )
 
-    user = db_session.query(User).filter(User.email == "singleuse@example.com").first()
+    user = db_session.query(Usuario).filter(Usuario.email == "singleuse@example.com").first()
     token_record = (
-        db_session.query(PasswordResetToken)
-        .filter(PasswordResetToken.user_id == user.id)
+        db_session.query(TokenRestablecimientoContrasena)
+        .filter(TokenRestablecimientoContrasena.user_id == user.id)
         .first()
     )
     token = token_record.token
@@ -158,20 +158,20 @@ def test_reset_password_expired_token(client, db_session):
         json={
             "email": "expired@example.com",
             "password": "Password123!",
-            "full_name": "Expired User",
+            "full_name": "Expired Usuario",
         },
     )
 
-    with patch("app.services.email_service.EmailService.send_reset_token_email", return_value=True):
+    with patch("app.servicios.correo_service.CorreoService.send_reset_token_email", return_value=True):
         client.post(
             "/api/v1/auth/forgot-password",
             json={"email": "expired@example.com"},
         )
 
-    user = db_session.query(User).filter(User.email == "expired@example.com").first()
+    user = db_session.query(Usuario).filter(Usuario.email == "expired@example.com").first()
     token_record = (
-        db_session.query(PasswordResetToken)
-        .filter(PasswordResetToken.user_id == user.id)
+        db_session.query(TokenRestablecimientoContrasena)
+        .filter(TokenRestablecimientoContrasena.user_id == user.id)
         .first()
     )
     # Expire the token by setting expires_at to 10 minutes ago

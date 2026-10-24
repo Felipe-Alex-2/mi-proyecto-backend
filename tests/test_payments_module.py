@@ -1,40 +1,40 @@
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
-from app.models.branch import Branch
-from app.models.category import Category
-from app.models.product import Product
-from app.models.product_variant import ProductVariant
-from app.models.size import Size
-from app.models.color import Color
-from app.models.stock import Stock
-from app.models.reservation import Reservation
-from app.models.reservation_item import ReservationItem
-from app.models.inventory_movement import InventoryMovement, MovementType
-from app.models.user import User, UserRole
-from app.core.security import get_password_hash
+from app.modelos.sucursal import Sucursal
+from app.modelos.categoria import Categoria
+from app.modelos.producto import Producto
+from app.modelos.variante_producto import VarianteProducto
+from app.modelos.talla import Talla
+from app.modelos.color import Color
+from app.modelos.stock import Stock
+from app.modelos.reserva import Reserva
+from app.modelos.reserva_item import ReservaItem
+from app.modelos.movimiento_inventario import MovimientoInventario, TipoMovimiento
+from app.modelos.usuario import Usuario, RolUsuario
+from app.nucleo.seguridad import get_password_hash
 
 
 def _setup_catalog(db_session):
-    branch = Branch(name="Sucursal POS Central", city="La Paz", address="Av. Comercio 123", is_active=True)
-    cat = Category(name="Ropa POS")
-    sz = Size(name="M POS", code="M-POS")
+    branch = Sucursal(name="Sucursal POS Central", city="La Paz", address="Av. Comercio 123", is_active=True)
+    cat = Categoria(name="Ropa POS")
+    sz = Talla(name="M POS", code="M-POS")
     col = Color(name="Negro POS", hex_code="#000000")
-    customer = User(
+    customer = Usuario(
         email="cliente_pos@test.com",
         hashed_password=get_password_hash("Password123!"),
         full_name="Cliente POS",
-        role=UserRole.CUSTOMER.value,
+        role=RolUsuario.CUSTOMER.value,
         is_active=True,
     )
     db_session.add_all([branch, cat, sz, col, customer])
     db_session.commit()
 
-    prod = Product(name="Camisa POS Elegante", price=25.0, category_id=cat.id, is_active=True)
+    prod = Producto(name="Camisa POS Elegante", price=25.0, category_id=cat.id, is_active=True)
     db_session.add(prod)
     db_session.commit()
 
-    variant = ProductVariant(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="SKU-POS-001")
+    variant = VarianteProducto(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="SKU-POS-001")
     db_session.add(variant)
     db_session.commit()
 
@@ -51,7 +51,7 @@ def test_pos_cash_payment_flow(client, admin_token, db_session):
     now = datetime.now(timezone.utc)
 
     # 1. Create a reservation that is pending payment in store
-    reservation = Reservation(
+    reservation = Reserva(
         reservation_code="RSV-TEST-POS",
         customer_id=customer.id,
         branch_id=branch.id,
@@ -64,7 +64,7 @@ def test_pos_cash_payment_flow(client, admin_token, db_session):
     db_session.add(reservation)
     db_session.flush()
 
-    res_item = ReservationItem(
+    res_item = ReservaItem(
         reservation_id=reservation.id,
         variant_id=variant.id,
         quantity=2,
@@ -103,13 +103,13 @@ def test_pos_cash_payment_flow(client, admin_token, db_session):
 
     # Prior to payment, no EXIT movement exists for RSV-TEST-POS
     exit_before = (
-        db_session.query(InventoryMovement)
-        .filter(InventoryMovement.reference_number == "RSV-TEST-POS")
+        db_session.query(MovimientoInventario)
+        .filter(MovimientoInventario.reference_number == "RSV-TEST-POS")
         .first()
     )
     assert exit_before is None
 
-    # 4. Process Cash Payment in Caja
+    # 4. Process Cash Pago in Caja
     resp_cash = client.post(
         f"/api/v1/payments/{payment_id}/cash",
         json={"notes": "Cobrado en caja 1"},
@@ -124,18 +124,18 @@ def test_pos_cash_payment_flow(client, admin_token, db_session):
     # 5. Verify that now, and only now, EXIT movement was created in inventory_movements
     db_session.expire_all()
     exit_after = (
-        db_session.query(InventoryMovement)
-        .filter(InventoryMovement.reference_number == "RSV-TEST-POS")
+        db_session.query(MovimientoInventario)
+        .filter(MovimientoInventario.reference_number == "RSV-TEST-POS")
         .first()
     )
     assert exit_after is not None
-    assert exit_after.type == MovementType.EXIT.value
+    assert exit_after.type == TipoMovimiento.EXIT.value
     assert exit_after.payment_method == "EFECTIVO"
     assert exit_after.payment_status == "PAID"
     assert exit_after.quantity == 2
 
     # Verify reservation is COMPLETED and PAID
-    updated_res = db_session.query(Reservation).filter(Reservation.id == reservation.id).first()
+    updated_res = db_session.query(Reserva).filter(Reserva.id == reservation.id).first()
     assert updated_res.status == "COMPLETED"
     assert updated_res.payment_status == "PAID"
 
@@ -162,7 +162,7 @@ def test_pos_paypal_checkout_flow(client, admin_token, db_session):
 
     # 2. Mock PayPal create_order
     mock_order = {"id": "ORDER-MOCK-POS-123", "status": "CREATED", "approval_url": "https://sandbox.paypal.com/checkout"}
-    with patch("app.services.paypal_service.PayPalService.create_order", return_value=mock_order):
+    with patch("app.servicios.paypal_service.PayPalService.create_order", return_value=mock_order):
         resp_order = client.post(
             f"/api/v1/payments/{payment_id}/paypal-order",
             headers=headers,
@@ -173,7 +173,7 @@ def test_pos_paypal_checkout_flow(client, admin_token, db_session):
 
     # 3. Mock PayPal capture_order
     mock_capture = {"status": "COMPLETED", "capture_id": "CAPTURE-POS-999"}
-    with patch("app.services.paypal_service.PayPalService.capture_order", return_value=mock_capture):
+    with patch("app.servicios.paypal_service.PayPalService.capture_order", return_value=mock_capture):
         resp_capture = client.post(
             f"/api/v1/payments/{payment_id}/paypal-capture?order_id=ORDER-MOCK-POS-123",
             headers=headers,
@@ -242,9 +242,9 @@ def test_pos_direct_sale_with_items_and_invoice_pdf(client, admin_token, db_sess
     assert stock_after.quantity == 15
 
     # 4. Verify inventory movement EXIT was recorded (CU09)
-    mov = db_session.query(InventoryMovement).filter(
-        InventoryMovement.reference_number == paid_payment["payment_code"],
-        InventoryMovement.type == MovementType.EXIT.value,
+    mov = db_session.query(MovimientoInventario).filter(
+        MovimientoInventario.reference_number == paid_payment["payment_code"],
+        MovimientoInventario.type == TipoMovimiento.EXIT.value,
     ).first()
     assert mov is not None
     assert mov.quantity == 5

@@ -66,3 +66,6 @@ test.db
 *.swo
 .DS_Store
 Thumbs.db
+
+# Private company backups
+private_backups/

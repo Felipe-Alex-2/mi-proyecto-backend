@@ -1,4 +1,4 @@
-from app.middleware.error_handler import (
+from app.middleware.manejo_errores import (
     validation_exception_handler,
     general_exception_handler,
 )

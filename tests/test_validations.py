@@ -1,14 +1,14 @@
 ﻿import pytest
-from app.models.user import User
-from app.models.category import Category
-from app.models.size import Size
-from app.models.color import Color
-from app.models.product import Product
-from app.core.security import get_password_hash, create_access_token
+from app.modelos.usuario import Usuario
+from app.modelos.categoria import Categoria
+from app.modelos.talla import Talla
+from app.modelos.color import Color
+from app.modelos.producto import Producto
+from app.nucleo.seguridad import get_password_hash, create_access_token
 
 
 def create_admin_user(db_session, email="val_admin@example.com"):
-    user = User(
+    user = Usuario(
         email=email,
         hashed_password=get_password_hash("Password123!"),
         full_name="Admin Validator",
@@ -22,7 +22,7 @@ def create_admin_user(db_session, email="val_admin@example.com"):
     return user
 
 
-def get_auth_header(user: User) -> dict:
+def get_auth_header(user: Usuario) -> dict:
     token = create_access_token(
         subject=user.id,
         claims={"role": user.role, "email": user.email},
@@ -109,7 +109,7 @@ def test_reject_whitespace_in_product_create_and_update(client, db_session):
     admin = create_admin_user(db_session, "admin_white_prod@example.com")
     headers = get_auth_header(admin)
 
-    cat = Category(name="Categoría Test Whitespace")
+    cat = Categoria(name="Categoría Test Whitespace")
     db_session.add(cat)
     db_session.commit()
 
@@ -146,7 +146,7 @@ def test_duplicate_product_name_rejected(client, db_session):
     admin = create_admin_user(db_session, "admin_dup_prod@example.com")
     headers = get_auth_header(admin)
 
-    cat = Category(name="Categoría Dup Test")
+    cat = Categoria(name="Categoría Dup Test")
     db_session.add(cat)
     db_session.commit()
 
@@ -163,18 +163,18 @@ def test_duplicate_product_name_rejected(client, db_session):
 
 def test_duplicate_user_email_on_profile_update(client, db_session):
     # Crear usuario 1
-    user1 = User(
+    user1 = Usuario(
         email="user1_dup@example.com",
         hashed_password=get_password_hash("Password123!"),
-        full_name="User Uno",
+        full_name="Usuario Uno",
         role="ADMIN",
         is_active=True,
     )
     # Crear usuario 2
-    user2 = User(
+    user2 = Usuario(
         email="user2_dup@example.com",
         hashed_password=get_password_hash("Password123!"),
-        full_name="User Dos",
+        full_name="Usuario Dos",
         role="ADMIN",
         is_active=True,
     )

@@ -1,13 +1,13 @@
 import pytest
-from app.models.user import User, UserRole
-from app.core.security import get_password_hash, create_access_token
+from app.modelos.usuario import Usuario, RolUsuario
+from app.nucleo.seguridad import get_password_hash, create_access_token
 
 
-def create_test_user(db_session, email: str, role: str = "ADMIN", is_active: bool = True) -> User:
-    user = User(
+def create_test_user(db_session, email: str, role: str = "ADMIN", is_active: bool = True) -> Usuario:
+    user = Usuario(
         email=email,
         hashed_password=get_password_hash("Password123!"),
-        full_name=f"User {email}",
+        full_name=f"Usuario {email}",
         role=role,
         is_active=is_active,
         is_verified=True,
@@ -18,7 +18,7 @@ def create_test_user(db_session, email: str, role: str = "ADMIN", is_active: boo
     return user
 
 
-def get_auth_header(user: User) -> dict:
+def get_auth_header(user: Usuario) -> dict:
     token = create_access_token(
         subject=user.id,
         claims={"role": user.role, "email": user.email},

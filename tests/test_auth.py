@@ -7,13 +7,13 @@ def test_register_user_success(client):
         json={
             "email": "test@example.com",
             "password": "Password123!",
-            "full_name": "Test User",
+            "full_name": "Test Usuario",
         },
     )
     assert response.status_code == 201
     data = response.json()
     assert data["email"] == "test@example.com"
-    assert data["full_name"] == "Test User"
+    assert data["full_name"] == "Test Usuario"
     assert "id" in data
     assert "hashed_password" not in data
 
@@ -22,7 +22,7 @@ def test_register_duplicate_email(client):
     payload = {
         "email": "duplicate@example.com",
         "password": "Password123!",
-        "full_name": "Test User",
+        "full_name": "Test Usuario",
     }
     res1 = client.post("/api/v1/auth/register", json=payload)
     assert res1.status_code == 201
@@ -38,7 +38,7 @@ def test_register_short_password(client):
         json={
             "email": "shortpwd@example.com",
             "password": "short",
-            "full_name": "Test User",
+            "full_name": "Test Usuario",
         },
     )
     assert response.status_code == 422
@@ -51,7 +51,7 @@ def test_login_success(client):
         json={
             "email": "login@example.com",
             "password": "Password123!",
-            "full_name": "Login User",
+            "full_name": "Login Usuario",
         },
     )
 
@@ -77,7 +77,7 @@ def test_login_invalid_password(client):
         json={
             "email": "wrongpwd@example.com",
             "password": "Password123!",
-            "full_name": "Login User",
+            "full_name": "Login Usuario",
         },
     )
 
@@ -98,7 +98,7 @@ def test_refresh_token(client):
         json={
             "email": "refresh@example.com",
             "password": "Password123!",
-            "full_name": "Refresh User",
+            "full_name": "Refresh Usuario",
         },
     )
     login_res = client.post(
@@ -124,7 +124,7 @@ def test_logout_and_blacklist(client):
         json={
             "email": "logout@example.com",
             "password": "Password123!",
-            "full_name": "Logout User",
+            "full_name": "Logout Usuario",
         },
     )
     login_res = client.post(

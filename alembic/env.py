@@ -8,9 +8,9 @@ import sys
 # Add project root to sys.path
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.config import settings
-from app.database import Base
-import app.models  # load all models
+from app.configuracion import settings
+from app.base_datos import Base
+import app.modelos  # load all models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

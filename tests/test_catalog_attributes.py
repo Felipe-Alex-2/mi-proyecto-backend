@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from app.models.user import UserRole
+from app.modelos.usuario import RolUsuario
 
 
 def test_create_and_list_categories(client: TestClient, admin_token: str):

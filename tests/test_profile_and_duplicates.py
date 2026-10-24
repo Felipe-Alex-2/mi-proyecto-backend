@@ -65,10 +65,10 @@ def test_category_duplicates_use_literal_case_insensitive_names(client, admin_to
 
 
 def test_duplicate_variants_and_negative_initial_stock_return_validation_errors(client, admin_token, db_session):
-    from app.models.category import Category
-    from app.models.color import Color
-    from app.models.size import Size
-    category = Category(name='Prendas test'); color = Color(name='Crema', hex_code='#FAF7F2'); size = Size(name='Mediana', code='M')
+    from app.modelos.categoria import Categoria
+    from app.modelos.color import Color
+    from app.modelos.talla import Talla
+    category = Categoria(name='Prendas test'); color = Color(name='Crema', hex_code='#FAF7F2'); size = Talla(name='Mediana', code='M')
     db_session.add_all([category, color, size]); db_session.commit()
     variant = {'size_id': size.id, 'color_id': color.id}
     payload = {'name': 'Blusa test', 'price': 29, 'category_id': category.id, 'variants': [variant, variant]}
@@ -98,10 +98,10 @@ def test_profile_migration_preserves_existing_users_and_is_idempotent():
     engine = create_engine('sqlite://')
     with engine.begin() as connection:
         connection.execute(text('CREATE TABLE users (id VARCHAR PRIMARY KEY, full_name VARCHAR NOT NULL)'))
-        connection.execute(text("INSERT INTO users VALUES ('old', 'Existing User')"))
+        connection.execute(text("INSERT INTO users VALUES ('old', 'Existing Usuario')"))
         with Operations.context(MigrationContext.configure(connection)):
             migration.upgrade(); migration.upgrade()
         assert {'avatar_id', 'profile_photo'} <= {c['name'] for c in inspect(connection).get_columns('users')}
         row = connection.execute(text('SELECT full_name, avatar_id, profile_photo FROM users')).one()
-        assert tuple(row) == ('Existing User', 'terracotta', None)
+        assert tuple(row) == ('Existing Usuario', 'terracotta', None)
     engine.dispose()

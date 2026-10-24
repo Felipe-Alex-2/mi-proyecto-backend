@@ -1,18 +1,18 @@
 import pytest
-from app.models.branch import Branch
-from app.models.category import Category
-from app.models.color import Color
-from app.models.product import Product
-from app.models.product_variant import ProductVariant
-from app.models.size import Size
-from app.models.stock import Stock
-from app.models.inventory_movement import InventoryMovement
-from app.models.user import User, UserRole
-from app.core.security import get_password_hash, create_access_token
+from app.modelos.sucursal import Sucursal
+from app.modelos.categoria import Categoria
+from app.modelos.color import Color
+from app.modelos.producto import Producto
+from app.modelos.variante_producto import VarianteProducto
+from app.modelos.talla import Talla
+from app.modelos.stock import Stock
+from app.modelos.movimiento_inventario import MovimientoInventario
+from app.modelos.usuario import Usuario, RolUsuario
+from app.nucleo.seguridad import get_password_hash, create_access_token
 
 
 def _create_user(db_session, email, role, full_name, branch_id=None):
-    user = User(
+    user = Usuario(
         email=email,
         hashed_password=get_password_hash("Password123!"),
         full_name=full_name,
@@ -32,18 +32,18 @@ def test_cu09_inventory_movements(client, admin_token, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
     # Setup
-    branch = Branch(name="Sucursal Centro", city="La Paz", address="Calle Murillo 100")
-    cat = Category(name="Camisas")
-    sz = Size(name="Medium", code="M")
+    branch = Sucursal(name="Sucursal Centro", city="La Paz", address="Calle Murillo 100")
+    cat = Categoria(name="Camisas")
+    sz = Talla(name="Medium", code="M")
     col = Color(name="Azul", hex_code="#0000FF")
     db_session.add_all([branch, cat, sz, col])
     db_session.commit()
 
-    prod = Product(name="Camisa Oxford", price=120.0, category_id=cat.id)
+    prod = Producto(name="Camisa Oxford", price=120.0, category_id=cat.id)
     db_session.add(prod)
     db_session.commit()
 
-    variant = ProductVariant(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="CAM-OXF-M-AZU")
+    variant = VarianteProducto(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="CAM-OXF-M-AZU")
     db_session.add(variant)
     db_session.commit()
 
@@ -94,7 +94,7 @@ def test_cu09_inventory_movements(client, admin_token, db_session):
     assert list_res.status_code == 200
     assert len(list_res.json()) >= 2
 
-    # 5. Branch inventory summary
+    # 5. Sucursal inventory summary
     sum_res = client.get(f"/api/v1/inventory/summary/{branch.id}", headers=headers)
     assert sum_res.status_code == 200
     assert sum_res.json()["total_units"] == 40
@@ -103,19 +103,19 @@ def test_cu09_inventory_movements(client, admin_token, db_session):
 def test_cu10_cross_branch_availability(client, admin_token, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    b1 = Branch(name="Sucursal Centro", city="La Paz", address="Murillo 100")
-    b2 = Branch(name="Sucursal Sur", city="La Paz", address="Calacoto 200")
-    cat = Category(name="Pantalones")
-    sz = Size(name="Large", code="L")
+    b1 = Sucursal(name="Sucursal Centro", city="La Paz", address="Murillo 100")
+    b2 = Sucursal(name="Sucursal Sur", city="La Paz", address="Calacoto 200")
+    cat = Categoria(name="Pantalones")
+    sz = Talla(name="Large", code="L")
     col = Color(name="Negro", hex_code="#000000")
     db_session.add_all([b1, b2, cat, sz, col])
     db_session.commit()
 
-    prod = Product(name="Pantalón Slim", price=180.0, category_id=cat.id)
+    prod = Producto(name="Pantalón Slim", price=180.0, category_id=cat.id)
     db_session.add(prod)
     db_session.commit()
 
-    variant = ProductVariant(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="PAN-SLM-L-NEG")
+    variant = VarianteProducto(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="PAN-SLM-L-NEG")
     db_session.add(variant)
     db_session.commit()
 
@@ -145,14 +145,14 @@ def test_cu10_cross_branch_availability(client, admin_token, db_session):
 def test_cu11_catalog_filters_and_search(client, admin_token, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    cat = Category(name="Camisas")
-    sz = Size(name="Medium", code="M")
+    cat = Categoria(name="Camisas")
+    sz = Talla(name="Medium", code="M")
     col = Color(name="Blanco", hex_code="#FFFFFF")
     db_session.add_all([cat, sz, col])
     db_session.commit()
 
-    p1 = Product(name="Camisa Formal Blanca", price=150.0, category_id=cat.id, gender="Hombre")
-    p2 = Product(name="Blusa Seda", price=250.0, category_id=cat.id, gender="Mujer")
+    p1 = Producto(name="Camisa Formal Blanca", price=150.0, category_id=cat.id, gender="Hombre")
+    p2 = Producto(name="Blusa Seda", price=250.0, category_id=cat.id, gender="Mujer")
     db_session.add_all([p1, p2])
     db_session.commit()
 
@@ -175,20 +175,20 @@ def test_cu11_catalog_filters_and_search(client, admin_token, db_session):
 
 
 def test_cu12_shopping_cart(client, db_session):
-    customer, token = _create_user(db_session, "cliente1@test.com", UserRole.CUSTOMER.value, "Cliente Uno")
+    customer, token = _create_user(db_session, "cliente1@test.com", RolUsuario.CUSTOMER.value, "Cliente Uno")
     headers = {"Authorization": f"Bearer {token}"}
 
-    cat = Category(name="Calzados")
-    sz = Size(name="40", code="40")
+    cat = Categoria(name="Calzados")
+    sz = Talla(name="40", code="40")
     col = Color(name="Café", hex_code="#8B4513")
     db_session.add_all([cat, sz, col])
     db_session.commit()
 
-    prod = Product(name="Zapatos de Cuero", price=320.0, category_id=cat.id)
+    prod = Producto(name="Zapatos de Cuero", price=320.0, category_id=cat.id)
     db_session.add(prod)
     db_session.commit()
 
-    variant = ProductVariant(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="ZAP-CUE-40-CAF")
+    variant = VarianteProducto(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="ZAP-CUE-40-CAF")
     db_session.add(variant)
     db_session.commit()
 
@@ -213,18 +213,18 @@ def test_cu12_shopping_cart(client, db_session):
 
 
 def test_cu13_reservations_flow(client, db_session):
-    branch = Branch(name="Sucursal San Miguel", city="La Paz", address="Av. Montenegro #50")
-    cat = Category(name="Abrigos")
-    sz = Size(name="XL", code="XL")
+    branch = Sucursal(name="Sucursal San Miguel", city="La Paz", address="Av. Montenegro #50")
+    cat = Categoria(name="Abrigos")
+    sz = Talla(name="XL", code="XL")
     col = Color(name="Gris", hex_code="#808080")
     db_session.add_all([branch, cat, sz, col])
     db_session.commit()
 
-    prod = Product(name="Chaqueta de Lana", price=450.0, category_id=cat.id)
+    prod = Producto(name="Chaqueta de Lana", price=450.0, category_id=cat.id)
     db_session.add(prod)
     db_session.commit()
 
-    variant = ProductVariant(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="CHA-LAN-XL-GRI")
+    variant = VarianteProducto(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="CHA-LAN-XL-GRI")
     db_session.add(variant)
     db_session.commit()
 
@@ -233,14 +233,14 @@ def test_cu13_reservations_flow(client, db_session):
     db_session.add(stock)
     db_session.commit()
 
-    customer, cust_token = _create_user(db_session, "cliente2@test.com", UserRole.CUSTOMER.value, "Cliente Dos")
+    customer, cust_token = _create_user(db_session, "cliente2@test.com", RolUsuario.CUSTOMER.value, "Cliente Dos")
     cust_headers = {"Authorization": f"Bearer {cust_token}"}
 
-    staff, staff_token = _create_user(db_session, "cajero@test.com", UserRole.CASHIER.value, "Cajero San Miguel", branch_id=branch.id)
+    staff, staff_token = _create_user(db_session, "cajero@test.com", RolUsuario.CASHIER.value, "Cajero San Miguel", branch_id=branch.id)
     staff_headers = {"Authorization": f"Bearer {staff_token}"}
 
     # 1. Validation: Customer attempts reservation in branch with 0 stock
-    branch_nostock = Branch(name="Sucursal Vacía", city="Cochabamba", address="Av. Heroínas 10")
+    branch_nostock = Sucursal(name="Sucursal Vacía", city="Cochabamba", address="Av. Heroínas 10")
     db_session.add(branch_nostock)
     db_session.commit()
     res_err = client.post(
@@ -249,7 +249,8 @@ def test_cu13_reservations_flow(client, db_session):
         headers=cust_headers,
     )
     assert res_err.status_code == 400
-    assert "no hay stock de esta prenda" in res_err.json()["detail"].lower()
+    assert "stock insuficiente" in res_err.json()["detail"].lower()
+    assert "Disponible: 0, solicitado: 1" in res_err.json()["detail"]
 
     # 1b. Validation: Customer attempts reservation in branch with insufficient stock (stock is 5, requests 10)
     res_err2 = client.post(
@@ -258,7 +259,8 @@ def test_cu13_reservations_flow(client, db_session):
         headers=cust_headers,
     )
     assert res_err2.status_code == 400
-    assert "no tiene stock suficiente" in res_err2.json()["detail"].lower()
+    assert "stock insuficiente" in res_err2.json()["detail"].lower()
+    assert "Disponible: 5, solicitado: 10" in res_err2.json()["detail"]
 
     # 2. Customer creates reservation in branch with stock
     res_payload = {
@@ -287,10 +289,10 @@ def test_cu13_reservations_flow(client, db_session):
     assert upd_res.status_code == 200
     assert upd_res.json()["status"] == "COMPLETED"
 
-    # Verify that InventoryMovement was automatically created for this reservation
+    # Verify that MovimientoInventario was automatically created for this reservation
     mov = (
-        db_session.query(InventoryMovement)
-        .filter(InventoryMovement.reference_number == res_data["reservation_code"])
+        db_session.query(MovimientoInventario)
+        .filter(MovimientoInventario.reference_number == res_data["reservation_code"])
         .first()
     )
     assert mov is not None
@@ -299,7 +301,7 @@ def test_cu13_reservations_flow(client, db_session):
     assert "Venta por reserva confirmada" in mov.reason
 
     # 5. Check stats (Admin)
-    admin, admin_token = _create_user(db_session, "admin_stats@test.com", UserRole.ADMIN.value, "Admin Stats")
+    admin, admin_token = _create_user(db_session, "admin_stats@test.com", RolUsuario.ADMIN.value, "Admin Stats")
     adm_headers = {"Authorization": f"Bearer {admin_token}"}
     stats_res = client.get("/api/v1/reservations/stats", headers=adm_headers)
     assert stats_res.status_code == 200

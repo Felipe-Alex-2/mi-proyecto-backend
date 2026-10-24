@@ -2,15 +2,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from app.config import settings
+from app.configuracion import settings
 from app.api.v1.router import api_v1_router
-from app.middleware.error_handler import (
+from app.middleware.manejo_errores import (
     validation_exception_handler,
     general_exception_handler,
 )
-from app.database import engine, Base
+from app.base_datos import engine, Base
+from app.servicios.respaldo_service import backup_schedule
 from sqlalchemy.exc import SQLAlchemyError
-import app.models  # Ensure all models are registered with Base
+import app.modelos  # Ensure all models are registered with Base
 
 
 import logging
@@ -34,11 +35,16 @@ def _execute_startup_sql(conn, statement):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not settings.AUTO_CREATE_TABLES:
-        yield
+        async with backup_schedule():
+            yield
         return
     # Ensure tables are created if not running with migrations or in tests
     try:
         Base.metadata.create_all(bind=engine)
+        from app.nucleo.esquema_saas import ensure_saas_schema
+        ensure_saas_schema(engine)
+        from app.nucleo.esquema_bitacora import ensure_activity_scope_schema
+        ensure_activity_scope_schema(engine)
         with engine.connect() as conn:
             _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'CUSTOMER' NOT NULL;")
             _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_id VARCHAR(16) DEFAULT 'terracotta' NOT NULL;")
@@ -169,8 +175,10 @@ async def lifespan(app: FastAPI):
                     pass
             conn.commit()
     except Exception as exc:
-        logger.warning(f"Note: Database table auto-creation skipped or deferred: {exc}")
-    yield
+        logger.exception("Database initialization failed; refusing to start with an incomplete schema")
+        raise
+    async with backup_schedule():
+        yield
 
 
 

@@ -1,39 +1,39 @@
 import pytest
 from datetime import datetime, timezone, timedelta
-from app.models.branch import Branch
-from app.models.category import Category
-from app.models.product import Product
-from app.models.product_variant import ProductVariant
-from app.models.size import Size
-from app.models.color import Color
-from app.models.stock import Stock
-from app.models.reservation import Reservation
-from app.models.reservation_item import ReservationItem
-from app.models.payment import Payment
-from app.models.user import User, UserRole
-from app.core.security import get_password_hash, create_access_token
+from app.modelos.sucursal import Sucursal
+from app.modelos.categoria import Categoria
+from app.modelos.producto import Producto
+from app.modelos.variante_producto import VarianteProducto
+from app.modelos.talla import Talla
+from app.modelos.color import Color
+from app.modelos.stock import Stock
+from app.modelos.reserva import Reserva
+from app.modelos.reserva_item import ReservaItem
+from app.modelos.pago import Pago
+from app.modelos.usuario import Usuario, RolUsuario
+from app.nucleo.seguridad import get_password_hash, create_access_token
 
 
 def _setup_scenario(db_session):
-    branch = Branch(name="Sucursal Norte", city="Santa Cruz", address="Av. Cristo Redentor 456", is_active=True)
-    cat = Category(name="Vestidos")
-    sz = Size(name="S", code="S-VEST")
+    branch = Sucursal(name="Sucursal Norte", city="Santa Cruz", address="Av. Cristo Redentor 456", is_active=True)
+    cat = Categoria(name="Vestidos")
+    sz = Talla(name="S", code="S-VEST")
     col = Color(name="Azul Marino", hex_code="#000080")
-    customer = User(
+    customer = Usuario(
         email="cliente_notif@test.com",
         hashed_password=get_password_hash("Password123!"),
         full_name="Maria Notificaciones",
-        role=UserRole.CUSTOMER.value,
+        role=RolUsuario.CUSTOMER.value,
         is_active=True,
     )
     db_session.add_all([branch, cat, sz, col, customer])
     db_session.commit()
 
-    prod = Product(name="Vestido de Noche & Gala <Lujo>", price=60.0, category_id=cat.id, is_active=True)
+    prod = Producto(name="Vestido de Noche & Gala <Lujo>", price=60.0, category_id=cat.id, is_active=True)
     db_session.add(prod)
     db_session.commit()
 
-    variant = ProductVariant(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="SKU-VEST-01")
+    variant = VarianteProducto(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="SKU-VEST-01")
     db_session.add(variant)
     db_session.commit()
 
@@ -47,7 +47,7 @@ def _setup_scenario(db_session):
 def test_invoice_pdf_download_with_query_token_and_special_chars(client, admin_token, db_session):
     branch, customer, variant = _setup_scenario(db_session)
 
-    payment = Payment(
+    payment = Pago(
         payment_code="PAY-INV-SPECIAL",
         branch_id=branch.id,
         customer_id=customer.id,
@@ -84,7 +84,7 @@ def test_reservation_accepted_triggers_notification_and_badge(client, admin_toke
     now = datetime.now(timezone.utc)
 
     # 1. Create a reservation for customer
-    reservation = Reservation(
+    reservation = Reserva(
         reservation_code="RSV-NOTIF-01",
         customer_id=customer.id,
         branch_id=branch.id,
@@ -97,7 +97,7 @@ def test_reservation_accepted_triggers_notification_and_badge(client, admin_toke
     db_session.add(reservation)
     db_session.commit()
 
-    res_item = ReservationItem(
+    res_item = ReservaItem(
         reservation_id=reservation.id,
         variant_id=variant.id,
         quantity=1,
@@ -154,7 +154,7 @@ def test_paypal_capture_request_accepts_order_id_alias(client, admin_token, db_s
     now = datetime.now(timezone.utc)
 
     # Pre-create reservation with paypal_order_id
-    reservation = Reservation(
+    reservation = Reserva(
         reservation_code="RSV-PAYPAL-ALIAS",
         customer_id=customer.id,
         branch_id=branch.id,
@@ -170,7 +170,7 @@ def test_paypal_capture_request_accepts_order_id_alias(client, admin_token, db_s
 
     # Mock PayPal capture to avoid live network call
     from unittest.mock import patch
-    with patch("app.services.paypal_service.PayPalService.capture_order") as mock_capture:
+    with patch("app.servicios.paypal_service.PayPalService.capture_order") as mock_capture:
         mock_capture.return_value = {
             "status": "COMPLETED",
             "capture_id": "CAP-998877",

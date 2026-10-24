@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 # Never run startup migrations or contact the configured application database
 # while collecting/running tests. Each test owns an isolated in-memory database.
 os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["BACKUPS_ENABLED"] = "false"
 os.environ["AUTO_CREATE_TABLES"] = "false"
 os.environ["SMTP_USER"] = ""
 os.environ["SMTP_PASSWORD"] = ""
@@ -20,9 +21,9 @@ os.environ["PAYPAL_CLIENT_SECRET"] = ""
 os.environ["GEMINI_API_KEY"] = ""
 os.environ["VTON_URL"] = ""
 
-from app.database import Base, get_db
+from app.base_datos import Base, get_db
 from app.main import app
-from app.models import User, TokenBlacklist, PasswordResetToken, Branch
+from app.modelos import Usuario, ListaTokensRevocados, TokenRestablecimientoContrasena, Sucursal
 
 # Test SQLite database
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -52,8 +53,11 @@ def client(db_session):
     def override_get_db():
         try:
             yield db_session
-        finally:
-            pass
+        except Exception:
+            # Mirror the rollback performed when production closes its request
+            # session, while retaining this test's shared in-memory connection.
+            db_session.rollback()
+            raise
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
@@ -64,8 +68,8 @@ def client(db_session):
 @pytest.fixture(scope="function")
 def admin_token(db_session) -> str:
     """Returns a valid access token for an ADMIN user."""
-    from app.core.security import get_password_hash, create_access_token
-    user = User(
+    from app.nucleo.seguridad import get_password_hash, create_access_token
+    user = Usuario(
         email="admin_fixture@example.com",
         hashed_password=get_password_hash("Password123!"),
         full_name="Admin Fixture",

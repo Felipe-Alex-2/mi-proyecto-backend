@@ -1,19 +1,19 @@
-from app.models.category import Category
-from app.models.color import Color
-from app.models.size import Size
+from app.modelos.categoria import Categoria
+from app.modelos.color import Color
+from app.modelos.talla import Talla
 
 
 def test_create_and_list_products_with_variants(client, admin_token, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # 1. Create Category, Size, Color
-    cat = Category(name="Poleras", description="Poleras de algodon")
-    sz = Size(name="Mediano", code="M")
+    # 1. Create Categoria, Talla, Color
+    cat = Categoria(name="Poleras", description="Poleras de algodon")
+    sz = Talla(name="Mediano", code="M")
     col = Color(name="Azul Marino", hex_code="#001F3F")
     db_session.add_all([cat, sz, col])
     db_session.commit()
 
-    # 2. Create Product with variant
+    # 2. Create Producto with variant
     create_payload = {
         "name": "Polera Estampada Urban",
         "description": "Edicion limitada 100% algodon",
@@ -57,9 +57,9 @@ def test_create_and_list_products_with_variants(client, admin_token, db_session)
 def test_duplicate_sku_rejected(client, admin_token, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    cat = Category(name="Jeans")
-    sz1 = Size(name="Talla 30", code="30")
-    sz2 = Size(name="Talla 32", code="32")
+    cat = Categoria(name="Jeans")
+    sz1 = Talla(name="Talla 30", code="30")
+    sz2 = Talla(name="Talla 32", code="32")
     col = Color(name="Negro", hex_code="#000000")
     db_session.add_all([cat, sz1, sz2, col])
     db_session.commit()

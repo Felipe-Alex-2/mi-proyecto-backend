@@ -1,14 +1,14 @@
 import pytest
-from app.models.user import User
-from app.models.branch import Branch
-from app.core.security import get_password_hash, create_access_token
+from app.modelos.usuario import Usuario
+from app.modelos.sucursal import Sucursal
+from app.nucleo.seguridad import get_password_hash, create_access_token
 
 
-def create_test_user(db_session, email: str, role: str = "ADMIN") -> User:
-    user = User(
+def create_test_user(db_session, email: str, role: str = "ADMIN") -> Usuario:
+    user = Usuario(
         email=email,
         hashed_password=get_password_hash("Password123!"),
-        full_name=f"User {email}",
+        full_name=f"Usuario {email}",
         role=role,
         is_active=True,
         is_verified=True,
@@ -19,7 +19,7 @@ def create_test_user(db_session, email: str, role: str = "ADMIN") -> User:
     return user
 
 
-def get_auth_header(user: User) -> dict:
+def get_auth_header(user: Usuario) -> dict:
     token = create_access_token(
         subject=user.id,
         claims={"role": user.role, "email": user.email},
@@ -93,12 +93,12 @@ def test_list_branches_filter_by_city(client, db_session):
 
     client.post(
         "/api/v1/branches",
-        json={"name": "Branch LP 1", "city": "La Paz", "address": "Dirección 1"},
+        json={"name": "Sucursal LP 1", "city": "La Paz", "address": "Dirección 1"},
         headers=headers,
     )
     client.post(
         "/api/v1/branches",
-        json={"name": "Branch SCZ 1", "city": "Santa Cruz", "address": "Dirección 2"},
+        json={"name": "Sucursal SCZ 1", "city": "Santa Cruz", "address": "Dirección 2"},
         headers=headers,
     )
 
@@ -133,7 +133,7 @@ def test_assign_staff_and_transfer(client, db_session):
     manager = create_test_user(db_session, "manager_store@example.com", role="STORE_MANAGER")
     cashier = create_test_user(db_session, "cashier_store@example.com", role="CASHIER")
 
-    # 1. Assign both to Branch 1
+    # 1. Assign both to Sucursal 1
     assign_res = client.post(
         f"/api/v1/branches/{b1_id}/staff",
         json={"user_ids": [manager.id, cashier.id]},
@@ -145,7 +145,7 @@ def test_assign_staff_and_transfer(client, db_session):
     assert data1["manager"]["id"] == manager.id
     assert len(data1["cashiers"]) == 1
 
-    # 2. Transfer cashier from Branch 1 to Branch 2 (FA01)
+    # 2. Transfer cashier from Sucursal 1 to Sucursal 2 (FA01)
     transfer_res = client.post(
         f"/api/v1/branches/{b2_id}/staff",
         json={"user_ids": [cashier.id]},
@@ -156,7 +156,7 @@ def test_assign_staff_and_transfer(client, db_session):
     assert data2["staff_count"] == 1
     assert data2["cashiers"][0]["id"] == cashier.id
 
-    # Verify Branch 1 now only has 1 employee (manager)
+    # Verify Sucursal 1 now only has 1 employee (manager)
     b1_check = client.get(f"/api/v1/branches/{b1_id}", headers=headers)
     assert b1_check.json()["staff_count"] == 1
     assert len(b1_check.json()["cashiers"]) == 0

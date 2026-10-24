@@ -1,27 +1,27 @@
-from app.models.branch import Branch
-from app.models.category import Category
-from app.models.color import Color
-from app.models.product import Product
-from app.models.product_variant import ProductVariant
-from app.models.size import Size
+from app.modelos.sucursal import Sucursal
+from app.modelos.categoria import Categoria
+from app.modelos.color import Color
+from app.modelos.producto import Producto
+from app.modelos.variante_producto import VarianteProducto
+from app.modelos.talla import Talla
 
 
 def test_adjust_stock_and_query_inventory(client, admin_token, db_session):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # Setup Branch, Category, Size, Color, Product, Variant
-    branch = Branch(name="Central", city="La Paz", address="Av. 16 de Julio #123")
-    cat = Category(name="Vestidos")
-    sz = Size(name="Small", code="S")
+    # Setup Sucursal, Categoria, Talla, Color, Producto, Variant
+    branch = Sucursal(name="Central", city="La Paz", address="Av. 16 de Julio #123")
+    cat = Categoria(name="Vestidos")
+    sz = Talla(name="Small", code="S")
     col = Color(name="Rojo", hex_code="#FF0000")
     db_session.add_all([branch, cat, sz, col])
     db_session.commit()
 
-    prod = Product(name="Vestido de Noche", price=350.0, category_id=cat.id)
+    prod = Producto(name="Vestido de Noche", price=350.0, category_id=cat.id)
     db_session.add(prod)
     db_session.commit()
 
-    variant = ProductVariant(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="VES-ROJ-S")
+    variant = VarianteProducto(product_id=prod.id, size_id=sz.id, color_id=col.id, sku="VES-ROJ-S")
     db_session.add(variant)
     db_session.commit()
 
