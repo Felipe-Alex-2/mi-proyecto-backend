@@ -82,9 +82,13 @@ def _upgrade(conn):
     ensure_plan_catalog(conn)
     ensure_checkout_origin(conn)
     # Preserve the original customer/company relationship independently of selection.
+    # PostgreSQL/psycopg cannot consistently infer a repeated untyped parameter
+    # in both a SELECT projection and a VARCHAR comparison. Cast both uses to
+    # the actual tenant_id type; SQLite accepts the same portable SQL.
     conn.execute(text('''INSERT INTO saas_customer_companies (user_id, tenant_id)
-        SELECT id, :root FROM users WHERE role='CUSTOMER' AND NOT EXISTS
-        (SELECT 1 FROM saas_customer_companies m WHERE m.user_id=users.id AND m.tenant_id=:root)'''), {'root':ROOT_TENANT_ID})
+        SELECT id, CAST(:root AS VARCHAR(36)) FROM users WHERE role='CUSTOMER' AND NOT EXISTS
+        (SELECT 1 FROM saas_customer_companies m WHERE m.user_id=users.id
+         AND m.tenant_id=CAST(:root AS VARCHAR(36)))'''), {'root':ROOT_TENANT_ID})
 
 
 def ensure_checkout_origin(conn):

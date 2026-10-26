@@ -232,6 +232,7 @@ def test_upgrade_of_legacy_database_keeps_records_and_scopes_unique_names(tmp_pa
     with engine.begin() as conn:
         conn.execute(text('CREATE TABLE users (id VARCHAR(36) PRIMARY KEY,email VARCHAR(255),full_name VARCHAR(100),role VARCHAR(50),created_at DATETIME)'))
         conn.execute(text("INSERT INTO users VALUES ('owner','owner@example.com','Owner','ADMIN',CURRENT_TIMESTAMP)"))
+        conn.execute(text("INSERT INTO users VALUES ('legacy-customer','customer@example.com','Customer','CUSTOMER',CURRENT_TIMESTAMP)"))
         for table,column in [('categories','name'),('sizes','code'),('colors','name'),('seasons','name'),('suppliers','company_name'),('promotions','name'),('product_variants','sku')]:
             conn.execute(text(f'CREATE TABLE {table} (id VARCHAR(36) PRIMARY KEY,{column} VARCHAR(100) UNIQUE)'))
         conn.execute(text("INSERT INTO categories VALUES ('old-category','Polera')"))
@@ -244,6 +245,11 @@ def test_upgrade_of_legacy_database_keeps_records_and_scopes_unique_names(tmp_pa
         assert conn.execute(text('SELECT name,tenant_id FROM categories')).first()==('Polera',ROOT_TENANT_ID)
         assert conn.execute(text('SELECT count(*) FROM branches')).scalar()==1
         assert conn.execute(text('SELECT is_saas_admin FROM users WHERE id=\'owner\'')).scalar()
+        # Repeated startup upgrades preserve the legacy customer membership
+        # exactly once, without treating the owner as a customer.
+        assert conn.execute(text('SELECT user_id, tenant_id FROM saas_customer_companies')).all() == [
+            ('legacy-customer', ROOT_TENANT_ID)
+        ]
         conn.execute(Empresa.__table__.insert().values(id='other-company',name='Other',slug='other'))
         conn.execute(text("INSERT INTO categories (id,name,tenant_id) VALUES ('new-category','Polera','other-company')"))
         with pytest.raises(IntegrityError):
