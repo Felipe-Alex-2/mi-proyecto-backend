@@ -83,6 +83,10 @@ def create_backup(tenant_id, kind='MANUAL', bind=None):
             # Core SQL bypasses ORM context deliberately: each table has an explicit
             # company predicate, including the global customer membership mapping.
             for table in Base.metadata.sorted_tables:
+                # Reproducible synthetic experiments are separate from business
+                # recovery, which must never import executable model artifacts.
+                if table.name in ('analytics_datasets', 'analytics_runs'):
+                    continue
                 if 'tenant_id' not in table.c or table.name == 'users':
                     continue
                 rows = conn.execute(select(table).where(table.c.tenant_id == tenant_id)).mappings().all()

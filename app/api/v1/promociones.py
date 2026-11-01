@@ -41,6 +41,15 @@ def create_promotion(
     return PromocionService.format_response(promotion)
 
 
+@router.get('/suggestions/stock-age')
+def suggest_discounts(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_admin),
+):
+    from app.servicios.descuento_sugerido_service import suggestions
+    return suggestions(db)
+
+
 @router.get(
     "/{promotion_id}",
     response_model=PromocionResponse,

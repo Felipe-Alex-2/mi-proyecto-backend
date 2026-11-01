@@ -52,3 +52,12 @@ api_v1_router.include_router(saas_router)
 
 from app.api.v1.respaldos import router as backups_router
 api_v1_router.include_router(backups_router)
+
+from app.api.v1.tienda_publica import router as shop_router
+from app.api.v1.favoritos import router as favorites_router
+api_v1_router.include_router(shop_router)
+api_v1_router.include_router(favorites_router)
+
+from app.api.v1.analitica import router as analytics_router, company_router as synthetic_router
+api_v1_router.include_router(analytics_router)
+api_v1_router.include_router(synthetic_router)

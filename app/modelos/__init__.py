@@ -22,6 +22,7 @@ from app.modelos.perfil_biometrico import PerfilBiometrico
 from app.modelos.guia_tallas import GuiaTallas
 from app.modelos.sesion_vestidor_virtual import VestidorVirtualSession
 from app.modelos.promocion import Promocion
+from app.modelos.favorito import Favorito
 
 __all__ = [
     "Base",
@@ -54,6 +55,7 @@ __all__ = [
 ]
 
 from app.modelos.operacion_sincronizacion import OperacionSincronizacion
+from app.modelos.analitica import ConjuntoSintetico, EntrenamientoModelo
 
 from app.modelos.saas import Empresa, Plan, Suscripcion, PagoSuscripcion
 from app.nucleo.ambito_empresa import install_tenant_events

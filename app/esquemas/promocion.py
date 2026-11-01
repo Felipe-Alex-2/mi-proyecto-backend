@@ -5,6 +5,7 @@ from app.nucleo.validadores import validar_texto_obligatorio, validar_texto_opci
 
 
 class PromocionCreate(BaseModel):
+    product_ids: list[str] = Field(default_factory=list, max_length=100)
     name: str = Field(..., min_length=2, max_length=100)
     description: Optional[str] = Field(None, max_length=255)
     discount_percent: float = Field(..., gt=0, le=100, description="Porcentaje de descuento entre 1 y 100")

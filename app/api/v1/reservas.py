@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 from app.api.dependencias import get_current_user, require_roles
 from app.base_datos import get_db
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/reservations", tags=["In-Store Try-On Reservations (
 
 
 @router.post("/{id}/paypal-order", response_model=OrdenPayPalResponse)
-def pay_existing_reservation(id: str, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+def pay_existing_reservation(id: str, request: Request, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     """Resume an offline payment intent without creating another reservation."""
     from datetime import datetime, timezone
     from fastapi import HTTPException
@@ -38,7 +38,16 @@ def pay_existing_reservation(id: str, db: Session = Depends(get_db), current_use
         if not approval:
             raise HTTPException(409, "La orden ya fue aprobada o necesita verificarse. Consulta el pago antes de continuar.")
         return {"order_id":r.paypal_order_id,"approval_url":approval,"reservation":ReservaService._enrich_reservation(r)}
-    result = PayPalService.create_order(amount=float(r.total_amount), description=f"Reserva {r.reservation_code}", custom_id=r.id, request_id=r.id)
+    checkout_urls = {}
+    origin = request.headers.get('origin')
+    if origin:
+        from app.configuracion import settings
+        origin = origin.rstrip('/')
+        allowed = {value.rstrip('/') for value in settings.cors_origins_list} | {settings.FRONTEND_URL.rstrip('/')}
+        if origin not in allowed:
+            raise HTTPException(400, 'El origen del pago no está autorizado.')
+        checkout_urls = {'return_url': f'{origin}/paypal-return', 'cancel_url': f'{origin}/my-reservations?checkout=cancel'}
+    result = PayPalService.create_order(amount=float(r.total_amount), description=f"Reserva {r.reservation_code}", custom_id=r.id, request_id=r.id, **checkout_urls)
     r.paypal_order_id = result['order_id']
     r.payment_method = 'PAYPAL'
     db.commit()

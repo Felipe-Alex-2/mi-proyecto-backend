@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencias import require_roles
@@ -9,6 +9,19 @@ from app.servicios.reporte_gemini_service import ReporteGeminiService
 from app.servicios.reporte_service import ReporteService
 
 router = APIRouter(prefix="/reports", tags=["Dashboards and Reports (CU19)"])
+
+
+@router.get('/dashboard')
+def dashboard_summary(
+    months: int = Query(1, ge=1, le=12),
+    branch_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.ADMIN, RolUsuario.STORE_MANAGER)),
+):
+    from app.servicios.panel_service import dashboard
+    if months not in (1, 3, 12):
+        raise HTTPException(422, 'Selecciona un periodo de 1, 3 o 12 meses.')
+    return dashboard(db, current_user, months, branch_id)
 
 
 @router.post(

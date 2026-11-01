@@ -103,8 +103,8 @@ def configure_context(db, user, request):
         db.info['tenant_id'] = ROOT_TENANT_ID
     # Customers can browse different stores on different devices. A device pins
     # its context, while staff can never use these headers to change company.
-    header_tenant = request.headers.get('X-Vesta-Empresa')
-    header_branch = request.headers.get('X-Vesta-Sucursal')
+    header_tenant = request.headers.get('X-Vesta-Empresa') or request.headers.get('X-Vesta-Tenant')
+    header_branch = request.headers.get('X-Vesta-Sucursal') or request.headers.get('X-Vesta-Branch')
     if header_tenant or header_branch:
         if user.role != 'CUSTOMER':
             if header_tenant != db.info['tenant_id']:

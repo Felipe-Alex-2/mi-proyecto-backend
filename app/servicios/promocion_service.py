@@ -49,6 +49,23 @@ class PromocionService:
 
     @staticmethod
     def create_promotion(db: Session, payload: PromocionCreate) -> Promocion:
+        from app.modelos.producto import Producto
+        from app.modelos.variante_producto import VarianteProducto
+        from app.modelos.stock import Stock
+        from app.servicios.descuento_sugerido_service import local_today
+        products = []
+        if payload.product_ids:
+            ids = set(payload.product_ids)
+            products = db.query(Producto).filter(Producto.id.in_(ids), Producto.is_active == True).with_for_update().all()
+            if len(products) != len(ids):
+                raise HTTPException(404, 'Una de las prendas no existe o no pertenece a tu empresa.')
+            for product in products:
+                if product.promotion and product.promotion.is_active and product.promotion.end_date >= local_today():
+                    raise ConflictoException(detail=f'{product.name} ya tiene una promoción vigente o programada. Actualiza las sugerencias.')
+                available = db.query(Stock.id).join(VarianteProducto).filter(
+                    VarianteProducto.product_id == product.id, VarianteProducto.is_active == True, Stock.quantity > 0).first()
+                if not available:
+                    raise ConflictoException(detail=f'{product.name} ya no tiene stock disponible.')
         clean_name = payload.name.strip()
         existing = db.query(Promocion).filter(func.lower(Promocion.name) == clean_name.lower()).first()
         if existing:
@@ -63,6 +80,9 @@ class PromocionService:
             is_active=True,
         )
         db.add(promotion)
+        db.flush()
+        for product in products:
+            product.promotion_id = promotion.id
         commit_or_flush(db)
         db.refresh(promotion)
         return promotion
