@@ -60,3 +60,7 @@ from app.modelos.analitica import ConjuntoSintetico, EntrenamientoModelo
 from app.modelos.saas import Empresa, Plan, Suscripcion, PagoSuscripcion
 from app.nucleo.ambito_empresa import install_tenant_events
 install_tenant_events()
+
+from app.modelos.aporte_propio import CambioPrenda, TrasladoInventario, MovimientoPuntos, BeneficioPuntos, EntregaDomicilio
+from app.nucleo.fidelizacion import install_loyalty_events
+install_loyalty_events()

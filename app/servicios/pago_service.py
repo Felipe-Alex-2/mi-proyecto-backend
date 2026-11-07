@@ -246,6 +246,18 @@ class PagoService:
                 if not data.customer_name and r.customer:
                     data.customer_name = r.customer.full_name
 
+        # Identify a registered customer from the receipt email in this company.
+        if not customer_id and data.customer_email:
+            from app.modelos.saas import ClienteEmpresa
+            identified = db.query(Usuario).filter(
+                Usuario.role == 'CUSTOMER',
+                Usuario.email == data.customer_email.lower().strip(),
+                Usuario.id.in_(db.query(ClienteEmpresa.user_id).filter(
+                    ClienteEmpresa.tenant_id == db.info.get('tenant_id'))),
+            ).first()
+            if identified:
+                customer_id = identified.id
+
         items_json_str = None
         amount_final = round(data.amount, 2)
         concept_final = data.concept.strip()
@@ -326,13 +338,15 @@ class PagoService:
         payment_id: str,
         notes: Optional[str] = None,
     ) -> PagoResponse:
-        p = db.query(Pago).filter(Pago.id == payment_id).first()
+        p = db.query(Pago).filter(Pago.id == payment_id).with_for_update(of=Pago).populate_existing().first()
         if not p:
             raise NoEncontradoException(detail="Cobro no encontrado")
         resolve_branch(user, p.branch_id)
 
         if p.status == "PAID":
             return cls._enrich_payment(p)
+        if p.status != "PENDING":
+            raise SolicitudInvalidaException(detail="Este cobro ya no está pendiente y no puede pagarse.")
 
         now = datetime.now(timezone.utc)
         p.status = "PAID"
@@ -417,13 +431,16 @@ class PagoService:
         user: Usuario,
         payment_id: str,
     ) -> OrdenPagoPayPalResponse:
-        p = db.query(Pago).filter(Pago.id == payment_id).first()
+        p = db.query(Pago).filter(Pago.id == payment_id).with_for_update(of=Pago).populate_existing().first()
         if not p:
             raise NoEncontradoException(detail="Cobro no encontrado")
         resolve_branch(user, p.branch_id)
 
         if p.status == "PAID":
             raise SolicitudInvalidaException(detail="Este cobro ya ha sido pagado previamente")
+
+        if p.status != "PENDING":
+            raise SolicitudInvalidaException(detail="Este cobro ya no está pendiente y no puede pagarse.")
 
         amount_val = float(p.amount)
         currency_val = p.currency or "USD"
@@ -478,7 +495,7 @@ class PagoService:
         payment_id: str,
         paypal_order_id: str,
     ) -> PagoResponse:
-        p = db.query(Pago).filter(Pago.id == payment_id).first()
+        p = db.query(Pago).filter(Pago.id == payment_id).with_for_update(of=Pago).populate_existing().first()
         if not p:
             raise NoEncontradoException(detail="Cobro no encontrado")
         if user is not None:
@@ -488,6 +505,8 @@ class PagoService:
 
         if p.status == "PAID":
             return cls._enrich_payment(p)
+        if p.status != "PENDING":
+            raise SolicitudInvalidaException(detail="Este cobro ya no está pendiente y no puede pagarse.")
 
         # Check PayPal order status first
         order_info = PayPalService.get_order(paypal_order_id)

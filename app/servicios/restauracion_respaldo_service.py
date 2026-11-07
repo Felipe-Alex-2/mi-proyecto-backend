@@ -19,7 +19,8 @@ from app.servicios.respaldo_service import _encode
 MAX_BYTES = 32 * 1024 * 1024
 RESTORABLE = {'branches', 'categories', 'sizes', 'colors', 'seasons', 'suppliers',
     'promotions', 'products', 'product_variants', 'stocks', 'inventory_movements',
-    'reservations', 'reservation_items', 'payments', 'cart_items', 'size_guides', 'activity_logs', 'customer_favorites'}
+    'reservations', 'reservation_items', 'payments', 'cart_items', 'size_guides', 'activity_logs', 'customer_favorites', 'garment_exchanges', 'inventory_transfers',
+    'loyalty_entries', 'loyalty_rewards', 'home_deliveries'}
 INFORMATION_ONLY = {'users', 'tenants', 'saas_plans', 'saas_subscriptions',
                     'saas_subscription_payments', 'saas_customer_companies'}
 BUSINESS_KEYS = {'products': [('tenant_id', 'name')]}

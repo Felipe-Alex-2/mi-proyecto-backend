@@ -61,3 +61,6 @@ api_v1_router.include_router(favorites_router)
 from app.api.v1.analitica import router as analytics_router, company_router as synthetic_router
 api_v1_router.include_router(analytics_router)
 api_v1_router.include_router(synthetic_router)
+
+from app.api.v1.aporte_propio import router as own_router
+api_v1_router.include_router(own_router)
