@@ -78,19 +78,35 @@ def audit_saas(db, user, action, description, tenant_id=None):
 class SaasService:
     @staticmethod
     def select_company(db, user, tenant_id, branch_id):
-        if user.role != 'CUSTOMER':
-            raise HTTPException(403, 'Solo los clientes pueden cambiar de tienda desde su perfil.')
+        platform = user.role == 'ADMIN' and user.is_saas_admin
+        if user.role != 'CUSTOMER' and not platform:
+            raise HTTPException(403, 'Solo los clientes y el superadministrador pueden cambiar de empresa y sucursal.')
         tenant = db.get(Empresa, tenant_id)
         branch = db.query(Sucursal).execution_options(skip_tenant=True).filter(
             Sucursal.id == branch_id, Sucursal.tenant_id == tenant_id, Sucursal.is_active == True).first()
         if not tenant or not tenant.is_active or not branch:
             raise HTTPException(422, 'Selecciona una empresa activa y una sucursal que le pertenezca.')
+        previous_tenant = user.tenant_id
+        previous_branch = user.branch_id
         user.selected_tenant_id = tenant_id
         user.branch_id = branch_id
-        if not db.get(ClienteEmpresa, (user.id, tenant_id)):
+        if platform:
+            # Change the server-owned scope, never trust a staff tenant header.
+            user.tenant_id = tenant_id
+            db.info.update(tenant_id=tenant_id, customer_branch_id=None)
+            from app.modelos.bitacora import Bitacora
+            db.add(Bitacora(
+                tenant_id=tenant_id, user_id=user.id, user_email=user.email,
+                user_name=user.full_name, action='CAMBIAR_CONTEXTO_EMPRESA',
+                description=f'Superadministrador cambió de {previous_tenant}/{previous_branch} a {tenant_id}/{branch_id}',
+                category='ADMINISTRACION', branch_id=branch_id, branch_name=branch.name,
+            ))
+        elif not db.get(ClienteEmpresa, (user.id, tenant_id)):
             db.add(ClienteEmpresa(user_id=user.id, tenant_id=tenant_id))
         db.commit()
-        db.info.update(tenant_id=tenant_id, customer_branch_id=branch_id)
+        db.info.update(tenant_id=tenant_id, customer_branch_id=None if platform else branch_id)
+        db.refresh(user)
+        db.expire(user, ['company', 'selected_company', 'branch'])
         return user
 
     @staticmethod
