@@ -80,7 +80,7 @@ class PlanCreate(PlanUpdate):
 
 class SeleccionTienda(BaseModel):
     tenant_id: str = Field(min_length=1, max_length=36)
-    branch_id: str = Field(min_length=1, max_length=36)
+    branch_id: Optional[str] = Field(default=None, min_length=1, max_length=36)
 
 
 class EstadoEmpresa(BaseModel):

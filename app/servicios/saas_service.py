@@ -83,8 +83,8 @@ class SaasService:
             raise HTTPException(403, 'Solo los clientes y el superadministrador pueden cambiar de empresa y sucursal.')
         tenant = db.get(Empresa, tenant_id)
         branch = db.query(Sucursal).execution_options(skip_tenant=True).filter(
-            Sucursal.id == branch_id, Sucursal.tenant_id == tenant_id, Sucursal.is_active == True).first()
-        if not tenant or not tenant.is_active or not branch:
+            Sucursal.id == branch_id, Sucursal.tenant_id == tenant_id, Sucursal.is_active == True).first() if branch_id else None
+        if not tenant or not tenant.is_active or (branch_id and not branch) or (not platform and not branch):
             raise HTTPException(422, 'Selecciona una empresa activa y una sucursal que le pertenezca.')
         previous_tenant = user.tenant_id
         previous_branch = user.branch_id
@@ -99,7 +99,7 @@ class SaasService:
                 tenant_id=tenant_id, user_id=user.id, user_email=user.email,
                 user_name=user.full_name, action='CAMBIAR_CONTEXTO_EMPRESA',
                 description=f'Superadministrador cambió de {previous_tenant}/{previous_branch} a {tenant_id}/{branch_id}',
-                category='ADMINISTRACION', branch_id=branch_id, branch_name=branch.name,
+                category='ADMINISTRACION', branch_id=branch_id, branch_name=branch.name if branch else None,
             ))
         elif not db.get(ClienteEmpresa, (user.id, tenant_id)):
             db.add(ClienteEmpresa(user_id=user.id, tenant_id=tenant_id))
