@@ -85,7 +85,7 @@ def create_backup(tenant_id, kind='MANUAL', bind=None):
             for table in Base.metadata.sorted_tables:
                 # Reproducible synthetic experiments are separate from business
                 # recovery, which must never import executable model artifacts.
-                if table.name in ('analytics_datasets', 'analytics_runs'):
+                if table.name in ('analytics_datasets', 'analytics_runs', 'push_devices', 'push_outbox'):
                     continue
                 if 'tenant_id' not in table.c or table.name == 'users':
                     continue

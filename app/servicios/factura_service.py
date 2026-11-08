@@ -232,8 +232,8 @@ class FacturaService:
                         if itm.get("size") or itm.get("color"):
                             variant_str += f" | {esc(itm.get('color', ''))} / {esc(itm.get('size', ''))}".strip(" /")
                         qty = itm.get("quantity", 1)
-                        unit_p = float(itm.get("unit_price", 0.0))
-                        subtot = float(itm.get("subtotal", qty * unit_p))
+                        unit_p = float(itm.get("coupon_original_unit_price", itm.get("original_unit_price", itm.get("unit_price", 0.0))) if itm.get("wholesale_discount_percent", 0) or itm.get("coupon_discount_percent", 0) else itm.get("unit_price", 0.0))
+                        subtot = float(itm.get("coupon_original_subtotal", itm.get("original_subtotal", itm.get("subtotal", qty * unit_p))) if itm.get("wholesale_discount_percent", 0) or itm.get("coupon_discount_percent", 0) else itm.get("subtotal", qty * unit_p))
 
                         items_rows.append([
                             Paragraph(str(idx), cell_center),
@@ -296,7 +296,9 @@ class FacturaService:
 
         # --- TOTALS SUMMARY TABLE ---
         total_float = float(payment.amount)
-        subtotal_float = total_float
+        from app.servicios.venta_mayor_service import stored_summary
+        bulk = stored_summary(json.loads(payment.items_detail or '[]'), payment.amount)
+        subtotal_float = float(bulk['subtotal_before_wholesale'])
         iva_float = 0.00
 
         totals_data = [
@@ -307,12 +309,18 @@ class FacturaService:
                 Paragraph(f"<font size=12 color='#1A365D'><b>${total_float:.2f} {currency}</b></font>", cell_right),
             ],
         ]
+        if bulk['wholesale_discount_percent']:
+            totals_data.insert(1, [Paragraph(f"<b>Venta por mayor (-{bulk['wholesale_discount_percent']}%):</b>", cell_right),
+                                   Paragraph(f"-${float(bulk['wholesale_discount_amount']):.2f} {currency}", cell_right)])
+        if bulk.get('coupon_discount_percent'):
+            totals_data.insert(1, [Paragraph(f"<b>Cupón de puntos (-{bulk['coupon_discount_percent']}%):</b>", cell_right),
+                                   Paragraph(f"-${float(bulk['coupon_discount_amount']):.2f} {currency}", cell_right)])
         totals_table = Table(totals_data, colWidths=[6.0 * inch, 1.6 * inch])
         totals_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("TOPPADDING", (0, 0), (-1, -1), 2),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ("LINEABOVE", (0, 2), (-1, 2), 1.5, PRIMARY_COLOR),
+            ("LINEABOVE", (0, len(totals_data)-1), (-1, len(totals_data)-1), 1.5, PRIMARY_COLOR),
         ]))
         story.append(totals_table)
 
@@ -326,7 +334,7 @@ class FacturaService:
         footer_box = [
             [
                 Paragraph(
-                    "<b>TÉRMINOS Y CONDICIONES:</b> Este comprobante oficial certifica que los fondos han sido recibidos y liquidados a través de la caja del establecimiento comercial o pasarela autorizada PayPal Sandbox. Conserve esta factura para cualquier cambio, devolución o garantía dentro de los 30 días posteriores a la emisión según las políticas de tienda.",
+                    "<b>TÉRMINOS Y CONDICIONES:</b> Este comprobante oficial certifica que los fondos han sido recibidos y liquidados a través de la caja del establecimiento comercial o pasarela autorizada PayPal Sandbox. Conserve esta factura para cualquier cambio, devolución o garantía dentro de las 48 horas posteriores a la emisión según las políticas de tienda.",
                     subtitle_style,
                 )
             ]
@@ -549,6 +557,9 @@ class FacturaService:
                 Paragraph(f"<b>Total Pagado:</b> <font color='#A64F3D' size='13'>${float(payment.amount):.2f} USD</font>", title_style),
             ]
         ]
+        if bulk.get('coupon_discount_percent'):
+            totals_data.insert(1, [Paragraph(f"<b>Cupón de puntos (-{bulk['coupon_discount_percent']}%):</b>", cell_right),
+                                   Paragraph(f"-${float(bulk['coupon_discount_amount']):.2f} {currency}", cell_right)])
         totals_table = Table(totals_data, colWidths=[4.5 * inch, 3.1 * inch])
         totals_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), BG_LIGHT),

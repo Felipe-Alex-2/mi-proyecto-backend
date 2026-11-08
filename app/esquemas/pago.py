@@ -36,6 +36,7 @@ class PagoItemCreate(BaseModel):
 
 
 class PagoCreate(PagoBase):
+    coupon_code: str | None = Field(None, max_length=30)
     branch_id: str = Field(..., description="ID de la sucursal de cobro")
     reservation_id: Optional[str] = Field(None, description="ID de la reserva vinculada si aplica")
     items: Optional[List[PagoItemCreate]] = Field(None, description="Detalle de productos vendidos en caja")
@@ -52,6 +53,11 @@ class PagoProcess(BaseModel):
 
 
 class PagoResponse(BaseModel):
+    coupon_discount_amount: float = 0
+    coupon_discount_percent: int = 0
+    subtotal_before_wholesale: float = 0.0
+    wholesale_discount_percent: int = 0
+    wholesale_discount_amount: float = 0.0
     id: str
     payment_code: str
     branch_id: str

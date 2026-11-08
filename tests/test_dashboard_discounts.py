@@ -145,3 +145,20 @@ def test_tenant_isolation_for_dashboard_suggestions_and_product_assignment(clien
                'end_date': '2026-11-15', 'product_ids': [product.id]}
     assert client.post('/api/v1/promotions', headers=headers(admin_a), json=payload).status_code == 404
     assert client.get(f'/api/v1/reports/dashboard?branch_id={bb}', headers=headers(admin_a)).status_code == 404
+
+
+@pytest.mark.parametrize('minutes,threshold,eligible',[(4,5,False),(5,5,True),(29,30,False),(30,30,True)])
+def test_suggestions_support_minute_thresholds(client, db_session, world, monkeypatch, minutes, threshold, eligible):
+    _, _, product, _, _, users = world
+    monkeypatch.setattr(descuento_sugerido_service, 'utc_now', lambda: NOW)
+    product.created_at = NOW - timedelta(minutes=minutes)
+    db_session.commit()
+    response = client.get(f'/api/v1/promotions/suggestions/stock-age?min_age_minutes={threshold}',headers=users['ADMIN'])
+    assert response.status_code == 200, response.text
+    rows = response.json()
+    assert bool(rows) == eligible
+    if eligible:
+        assert rows[0]['minutes_in_stock'] == minutes
+        assert rows[0]['discount_percent'] == 10
+        assert 'minutos' in rows[0]['reason']
+    assert client.get('/api/v1/promotions/suggestions/stock-age',headers=users['ADMIN']).json() == []

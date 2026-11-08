@@ -6,14 +6,16 @@ from app.modelos.reserva import EstadoReserva
 
 class ReservaItemCreate(BaseModel):
     variant_id: str = Field(..., description="ID de la variante")
-    quantity: int = Field(1, ge=1, le=50, description="Cantidad a reservar")
+    quantity: int = Field(1, ge=1, le=1000, description="Cantidad a reservar")
 
 
 class ReservaCreate(BaseModel):
+    request_id: str | None = Field(None, min_length=36, max_length=36)
+    coupon_code: str | None = Field(None, max_length=30)
     branch_id: str = Field(..., description="Sucursal donde se realizará la prueba")
     items: List[ReservaItemCreate] = Field(..., min_length=1, max_length=50, description="Prendas a reservar")
     customer_notes: Optional[str] = Field(None, max_length=500, description="Notas o comentarios del cliente")
-    payment_method: Optional[Literal["EFECTIVO", "PAYPAL"]] = Field("EFECTIVO", description="Método de pago: EFECTIVO o PAYPAL")
+    payment_method: Optional[Literal["EFECTIVO", "PAYPAL", "WALLET"]] = Field("EFECTIVO", description="Método de pago: EFECTIVO o PAYPAL")
 
 
 class EstadoReservaUpdate(BaseModel):
@@ -42,10 +44,19 @@ class ReservaItemResponse(BaseModel):
 
 
 class ReservaResponse(BaseModel):
+    coupon_discount_amount: float = 0
+    coupon_discount_percent: int = 0
     tenant_id: Optional[str] = None
     company_name: Optional[str] = None
     id: str
     reservation_code: str
+    currency: str = 'USD'
+    subtotal_before_wholesale: float = 0.0
+    wholesale_discount_percent: int = 0
+    wholesale_discount_amount: float = 0.0
+    exchange_code: Optional[str] = None
+    receipt_issued_at: Optional[datetime] = None
+    exchange_deadline: Optional[datetime] = None
     customer_id: str
     branch_id: str
     status: str
@@ -77,6 +88,7 @@ class ReservaResponse(BaseModel):
 
 
 class OrdenReservaPayPalCreate(BaseModel):
+    coupon_code: str | None = Field(None, max_length=30)
     branch_id: str = Field(..., description="Sucursal donde se retirará la reserva")
     items: List[ReservaItemCreate] = Field(..., min_length=1, max_length=50, description="Prendas a pagar/reservar")
     customer_notes: Optional[str] = Field(None, max_length=500, description="Notas del cliente")

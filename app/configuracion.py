@@ -36,6 +36,13 @@ class Configuracion(BaseSettings):
     GEMINI_MODEL: str = "gemini-3.6-flash"
     GEMINI_FALLBACK_MODEL: str = "gemini-flash-latest"
 
+    # FCM credentials belong only to the backend environment.
+    FIREBASE_PUSH_ENABLED: bool = False
+    FIREBASE_PROJECT_ID: str = 'vesta-f6470'
+    FIREBASE_CREDENTIALS_JSON: str = ''
+    FIREBASE_CLIENT_EMAIL: str = ''
+    FIREBASE_PRIVATE_KEY: str = ''
+
     # SMTP (Gmail)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

@@ -10,6 +10,7 @@ from app.middleware.manejo_errores import (
 )
 from app.base_datos import engine, Base
 from app.servicios.respaldo_service import backup_schedule
+from app.servicios.push_service import push_schedule
 from sqlalchemy.exc import SQLAlchemyError
 import app.modelos  # Ensure all models are registered with Base
 
@@ -35,7 +36,7 @@ def _execute_startup_sql(conn, statement):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not settings.AUTO_CREATE_TABLES:
-        async with backup_schedule():
+        async with backup_schedule(), push_schedule():
             yield
         return
     # Ensure tables are created if not running with migrations or in tests
@@ -43,6 +44,10 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         from app.nucleo.esquema_saas import ensure_saas_schema
         ensure_saas_schema(engine)
+        from app.nucleo.esquema_cambios import ensure_exchange_schema
+        ensure_exchange_schema(engine)
+        from app.nucleo.esquema_puntos import ensure_loyalty_schema
+        ensure_loyalty_schema(engine)
         from app.nucleo.esquema_bitacora import ensure_activity_scope_schema
         ensure_activity_scope_schema(engine)
         with engine.connect() as conn:
@@ -177,7 +182,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.exception("Database initialization failed; refusing to start with an incomplete schema")
         raise
-    async with backup_schedule():
+    async with backup_schedule(), push_schedule():
         yield
 
 

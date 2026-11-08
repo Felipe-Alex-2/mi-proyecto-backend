@@ -64,3 +64,11 @@ install_tenant_events()
 from app.modelos.aporte_propio import CambioPrenda, TrasladoInventario, MovimientoPuntos, BeneficioPuntos, EntregaDomicilio
 from app.nucleo.fidelizacion import install_loyalty_events
 install_loyalty_events()
+
+from app.modelos.wallet import CuentaWallet, RecargaWallet, MovimientoWallet
+
+from app.modelos.reporte_guardado import ReporteGuardado
+
+from app.modelos.push import DispositivoPush, EnvioPush
+from app.servicios.push_service import install_events
+install_events()

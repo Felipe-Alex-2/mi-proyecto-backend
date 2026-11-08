@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import relationship
 from app.base_datos import Base
 from app.modelos.saas import PerteneceEmpresa
@@ -44,6 +44,7 @@ class Reserva(PerteneceEmpresa, Base):
     paypal_capture_id = Column(String(100), nullable=True)
     paid_at = Column(DateTime, nullable=True)
     total_amount = Column(Numeric(10, 2), nullable=True)
+    receipt_items_detail = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     expires_at = Column(DateTime, nullable=False, index=True)

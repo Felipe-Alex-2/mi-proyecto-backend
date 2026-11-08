@@ -26,6 +26,9 @@ def install_loyalty_events():
         for obj in list(db.new) + list(db.dirty):
             if not isinstance(obj, (Pago, Reserva)):
                 continue
+            from app.servicios.puntos_service import settle
+            if obj.id:
+                settle(db, obj)
             paid = obj.status == 'PAID' if isinstance(obj, Pago) else obj.payment_status == 'PAID'
             if not paid or not obj.customer_id:
                 continue
@@ -40,22 +43,18 @@ def install_loyalty_events():
                 reservation = db.query(Reserva).execution_options(skip_tenant=True).filter(
                     Reserva.id == obj.reservation_id, Reserva.tenant_id == tenant_id).first()
                 if reservation:
-                    obj.items_detail = json.dumps(snapshot(reservation, obj.amount, price, money))
+                    obj.items_detail = reservation.receipt_items_detail or json.dumps(snapshot(reservation, obj.amount, price, money))
             if isinstance(obj, Reserva):
                 if not obj.items:
                     continue
-                # Existing reservations do not have their own currency column.
-                # Only an explicit payment establishes a currency for points.
+                # Storefront reservations use USD (the PayPal checkout currency).
+                # An explicit cashier payment retains its actual currency.
                 payment = next((p for p in db.new if isinstance(p, Pago) and p.reservation_id == obj.id), None)
                 if not payment:
                     payment = db.query(Pago).execution_options(skip_tenant=True).filter(
                         Pago.reservation_id == obj.id, Pago.tenant_id == tenant_id).first()
-                if not payment:
-                    # Reservations without an explicit currency-bearing receipt
-                    # remain in their existing flow; never create a second sale.
-                    continue
-                currency = payment.currency
-                amount = payment.amount
+                currency = payment.currency if payment else 'USD'
+                amount = payment.amount if payment else obj.total_amount
                 source = 'reservation:' + obj.id
             else:
                 currency, amount = obj.currency, obj.amount
@@ -66,7 +65,7 @@ def install_loyalty_events():
                     has_items = False
                 if not has_items:
                     continue  # Shipping, differences and generic fees earn no points.
-            if currency != 'BOB' or amount is None or Decimal(str(amount)) <= 0:
+            if currency != 'USD' or amount is None or Decimal(str(amount)) <= 0:
                 continue
             points = int(Decimal(str(amount)) // 10)
             if not points:
@@ -83,7 +82,7 @@ def install_loyalty_events():
                 MovimientoPuntos.source_key == source).first()
             if not existing:
                 db.add(MovimientoPuntos(tenant_id=tenant_id, customer_id=customer.id,
-                       source_key=source, points=points, description=f'Compra pagada: Bs {money(amount)}'))
+                       source_key=source, points=points, description=f'Compra pagada: USD {money(amount)}'))
 
 
 def snapshot(reservation, total, price_fn, money_fn):

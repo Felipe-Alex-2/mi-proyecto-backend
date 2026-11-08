@@ -306,7 +306,10 @@ def customer_history(user: Usuario = Depends(get_current_user), db: Session = De
         raise HTTPException(403, 'Esta vista es el historial personal del cliente.')
     payments = db.query(Pago).filter(Pago.customer_id == user.id).order_by(Pago.created_at.desc()).limit(200).all()
     names = {t.id: t.name for t in db.query(Empresa).all()}
-    return [dict(id=p.id, payment_code=p.payment_code, tenant_id=p.tenant_id,
+    from app.servicios.venta_mayor_service import stored_summary
+    import json
+    return [dict(**stored_summary(json.loads(p.items_detail or '[]'), p.amount), id=p.id, payment_code=p.payment_code, tenant_id=p.tenant_id,
+                 exchange_code=(p.reservation.reservation_code if p.reservation else p.payment_code) if p.status == 'PAID' and (p.items_detail or p.reservation_id) else None,
                  company_name=names.get(p.tenant_id, ''), branch_name=p.branch.name if p.branch else '',
                  amount=p.amount, currency=p.currency, status=p.status, paid_at=p.paid_at,
                  concept=p.concept, payment_type=p.payment_type, reference=p.reference, items_detail=p.items_detail,

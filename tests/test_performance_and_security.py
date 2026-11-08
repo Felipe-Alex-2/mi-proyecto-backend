@@ -87,7 +87,9 @@ def test_cart_batches_stock_and_product_loading(db_session, stocked_catalog):
         cart = CarritoService.get_cart(db_session, stocked_catalog)
     assert len(cart.items) == 8
     assert cart.total_items == 16
-    assert cart.total_amount == 464
+    assert cart.subtotal_before_wholesale == 464
+    assert cart.total_amount == 394.4
+    assert cart.wholesale_discount_percent == 15
     assert all(item.available_stock == 5 for item in cart.items)
     assert len(queries) <= 2
 

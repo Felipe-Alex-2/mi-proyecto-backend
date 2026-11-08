@@ -43,11 +43,12 @@ def create_promotion(
 
 @router.get('/suggestions/stock-age')
 def suggest_discounts(
+    min_age_minutes: int = Query(43200, ge=5, le=5256000),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_admin),
 ):
     from app.servicios.descuento_sugerido_service import suggestions
-    return suggestions(db)
+    return suggestions(db, min_age_minutes=min_age_minutes)
 
 
 @router.get(

@@ -54,7 +54,10 @@ class PagoService:
             except Exception:
                 parsed_items = None
 
+        from app.servicios.venta_mayor_service import stored_summary
+        breakdown = stored_summary(parsed_items or [], p.amount or 0)
         return PagoResponse(
+            **breakdown,
             id=p.id,
             payment_code=p.payment_code,
             branch_id=p.branch_id,
@@ -241,6 +244,8 @@ class PagoService:
             r = db.query(Reserva).filter(Reserva.id == data.reservation_id).first()
             if not r or r.branch_id != data.branch_id:
                 raise SolicitudInvalidaException(detail="La reserva debe pertenecer a la sucursal del cobro")
+            if r and r.payment_status == "PAID":
+                raise SolicitudInvalidaException(detail="Esta reserva ya está pagada. No puede cobrarse de nuevo.")
             if r:
                 customer_id = r.customer_id
                 if not data.customer_name and r.customer:
@@ -291,11 +296,30 @@ class PagoService:
                     "unit_price": round(itm.unit_price, 2),
                     "subtotal": line_subtotal,
                 })
+            from app.servicios.venta_mayor_service import discount_lines
+            if data.coupon_code or sum(item['quantity'] for item in items_list_dict) >= 13:
+                from app.servicios.aporte_propio_service import price
+                from app.modelos.variante_producto import VarianteProducto
+                for item in items_list_dict:
+                    variant = db.query(VarianteProducto).filter(VarianteProducto.id == item['variant_id']).first()
+                    if not variant or not variant.is_active or not variant.product.is_active:
+                        raise SolicitudInvalidaException(detail='Una prenda no está disponible para esta venta.')
+                    item['unit_price'] = float(price(variant))
+                    item['product_name'], item['sku'] = variant.product.name, variant.sku
+            items_list_dict, totals = discount_lines(items_list_dict)
             items_json_str = json.dumps(items_list_dict)
-            if calc_amount > 0:
-                amount_final = round(calc_amount, 2)
+            amount_final = float(totals['total_amount'])
             if concept_parts:
                 concept_final = f"Venta: {', '.join(concept_parts)}"[:255]
+
+        reward = None
+        if data.coupon_code:
+            if data.reservation_id or not items_json_str:
+                raise SolicitudInvalidaException(detail='El cupón requiere una venta de prendas y el correo del cliente registrado.')
+            from app.servicios.puntos_service import coupon, discount
+            reward = coupon(db, customer_id, data.coupon_code)
+            lines, amount_final, savings = discount(items_list_dict, reward, data.currency)
+            items_json_str = json.dumps(lines)
 
         payment = Pago(
             payment_code=cls._generate_code(db),
@@ -316,6 +340,10 @@ class PagoService:
             created_at=datetime.now(timezone.utc),
         )
         db.add(payment)
+        if reward:
+            db.flush()
+            from app.servicios.puntos_service import bind
+            bind(reward, payment=payment, savings=savings)
         commit_or_flush(db)
         db.refresh(payment)
 
@@ -364,7 +392,7 @@ class PagoService:
                 r.payment_method = "EFECTIVO"
                 r.payment_status = "PAID"
                 r.status = EstadoReserva.COMPLETED.value
-                r.paid_at = now
+                r.paid_at = r.paid_at or now
                 if not r.staff_notes:
                     r.staff_notes = f"Cobrado en efectivo en caja ({p.payment_code})"
 
@@ -563,7 +591,7 @@ class PagoService:
                     r.status = EstadoReserva.COMPLETED.value
                     r.paypal_order_id = paypal_order_id
                     r.paypal_capture_id = capture_id
-                    r.paid_at = now
+                    r.paid_at = r.paid_at or now
                     if not r.staff_notes:
                         r.staff_notes = f"Cobrado con PayPal en caja ({p.payment_code})"
 

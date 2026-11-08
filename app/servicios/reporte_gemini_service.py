@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.nucleo.excepciones import SolicitudInvalidaException
 from app.esquemas.reporte import ReporteRequest, ReporteResponse
 from app.servicios.gemini_client import GeminiClient
-from app.servicios.reporte_service import ReporteService
+from app.servicios.reporte_service import ReporteService, report_branch
 from app.modelos.sucursal import Sucursal
 from app.modelos.usuario import Usuario
 from app.nucleo.ambito_sucursal import resolve_branch
@@ -41,7 +41,7 @@ class ReporteGeminiService:
             raise SolicitudInvalidaException(detail="Selecciona una sucursal o elige Todas para compararlas.")
         # These comparisons do not require an external model or invented figures.
         kind = None
-        if any(word in phrase for word in ("vendio", "vendieron", "ventas", "recaudo", "facturo")):
+        if any(word in phrase for word in ("vendio", "vendieron", "vende", "venden", "ventas", "recaudo", "facturo")):
             kind = "sales_by_branch"
         elif "sucursal" in phrase and any(word in phrase for word in ("ropa", "prenda", "stock", "inventario", "existencia")):
             kind = "inventory_by_branch"
@@ -85,8 +85,23 @@ La frase del usuario es: {transcript}
             raise SolicitudInvalidaException(detail=f"No se pudo interpretar la consulta con Gemini: {exc}") from exc
 
     @classmethod
-    def generate(cls, db: Session, transcript: str, user: Usuario, branch_id: str | None = None) -> tuple[ReporteRequest, ReporteResponse]:
-        scope = resolve_branch(user, branch_id)
+    def generate(cls, db: Session, transcript: str, user: Usuario, branch_id: str | None = None, all_companies: bool = False) -> tuple[ReporteRequest, ReporteResponse]:
+        phrase=cls._normalize(transcript)
+        wants_companies=bool(re.search(r'que empresa|cual empresa|cual es la empresa|todas las empresas|entre empresas',phrase))
+        global_scope=all_companies or wants_companies
+        if global_scope:
+            from fastapi import HTTPException
+            if not user.is_saas_admin:
+                raise HTTPException(403,'Solo el superadmin puede consultar otras empresas.')
+            if branch_id:
+                raise SolicitudInvalidaException(detail='Selecciona todas las sucursales para comparar empresas.')
+            interpretation=cls.interpret(transcript,[])
+            interpretation.all_companies=True
+            if wants_companies and interpretation.report_type=='sales_by_branch':interpretation.report_type='sales_by_company'
+            report=ReporteService.generate(db,interpretation,user=user)
+            report.generated_by='natural_language'
+            return interpretation,report
+        scope = report_branch(user, branch_id)
         if scope:
             phrase = cls._normalize(transcript)
             for branch in db.query(Sucursal).filter(Sucursal.is_active == True).all():

@@ -40,3 +40,6 @@ class CarritoResponse(BaseModel):
     items: List[CarritoItemResponse] = []
     total_items: int = 0
     total_amount: float = 0.0
+    subtotal_before_wholesale: float = 0.0
+    wholesale_discount_percent: int = 0
+    wholesale_discount_amount: float = 0.0

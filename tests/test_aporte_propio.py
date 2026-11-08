@@ -84,9 +84,9 @@ def test_exchange_validates_price_deadline_stock_and_rollback(client,db_session,
     auth=headers(shop['admin'])
     assert client.post('/api/v1/own/exchanges',headers=auth,json=request).status_code==409
     assert stock_qty(db_session,shop['origin'],shop['variant'].id)==5
-    db_session.get(Pago,p.id).paid_at=now()-timedelta(days=31);db_session.commit()
+    db_session.get(Pago,p.id).paid_at=now()-timedelta(hours=49);db_session.commit()
     request['expected_difference']=20
-    assert client.post('/api/v1/own/exchanges',headers=auth,json=request).status_code==422
+    assert client.post('/api/v1/own/exchanges',headers=auth,json=request).status_code==409
     assert client.post('/api/v1/own/exchanges',headers=headers(shop['other_admin']),json=request).status_code==404
 
 
@@ -129,21 +129,21 @@ def test_loyalty_settlement_once_currency_fee_and_redeem(client,db_session,shop)
     auth=headers(shop['customer'])
     account=client.get('/api/v1/own/loyalty',headers=auth).json()
     assert account['balance']==100 and len(account['entries'])==1
-    request={'request_id':str(uuid.uuid4())}
+    request={'request_id':str(uuid.uuid4()),'reward':'COUPON_15'}
     redeemed=client.post('/api/v1/own/loyalty/redeem',headers=auth,json=request)
     assert redeemed.status_code==201,redeemed.text
     assert client.post('/api/v1/own/loyalty/redeem',headers=auth,json=request).json()['code']==redeemed.json()['code']
-    assert client.get('/api/v1/own/loyalty',headers=auth).json()['balance']==0
-    assert client.post('/api/v1/own/loyalty/redeem',headers=auth,json={'request_id':str(uuid.uuid4())}).status_code==409
+    assert client.get('/api/v1/own/loyalty',headers=auth).json()['balance']==90
+    assert client.post('/api/v1/own/loyalty/redeem',headers=auth,json={'request_id':str(uuid.uuid4())}).status_code==422
     assert client.get('/api/v1/own/loyalty',headers=headers(shop['admin'])).status_code==403
 
 
 def test_reward_applies_to_identified_sale_and_paid_purchase_earns_net_points(client,db_session,shop):
-    paid(db_session,shop,1000)
+    paid(db_session,shop,70,currency='USD')
     customer_auth=headers(shop['customer']);admin_auth=headers(shop['admin'])
-    reward=client.post('/api/v1/own/loyalty/redeem',headers=customer_auth,json={'request_id':str(uuid.uuid4())}).json()
+    reward=client.post('/api/v1/own/loyalty/redeem',headers=customer_auth,json={'request_id':str(uuid.uuid4()),'reward':'COUPON_10'}).json()
     request=dict(branch_id=shop['origin'],customer_name='Cliente Aporte',customer_email=shop['customer'].email,
-        concept='Venta con puntos',amount=150,currency='BOB',items=[dict(variant_id=shop['variant'].id,
+        concept='Venta con puntos',amount=150,currency='USD',items=[dict(variant_id=shop['variant'].id,
         quantity=1,unit_price=150,product_name='Polera')])
     sale=client.post('/api/v1/payments',headers=admin_auth,json=request)
     assert sale.status_code==201,sale.text
@@ -179,7 +179,7 @@ def test_delivery_fee_payment_states_and_stock_not_deducted_twice(client,db_sess
     assert len(result.json()['history'])==4
     assert client.patch(route,headers=admin_auth,json={'status':'PREPARING'}).status_code==409
     assert stock_qty(db_session,shop['origin'],shop['variant'].id)==5
-    assert client.get('/api/v1/own/loyalty',headers=auth).json()['balance']==10
+    assert client.get('/api/v1/own/loyalty',headers=auth).json()['balance']==0
     assert client.get('/api/v1/own/deliveries',headers=headers(shop['other_admin'])).json()==[]
 
 

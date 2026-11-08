@@ -32,12 +32,27 @@ REPORT_TITLES = {
 }
 
 
+def report_branch(user, requested=None):
+    if user.role == 'CUSTOMER':
+        from fastapi import HTTPException
+        if not user.branch_id:
+            raise HTTPException(403,'Selecciona una empresa y sucursal para consultar tus reportes.')
+        if requested and requested != user.branch_id:
+            raise HTTPException(403,'El reporte debe pertenecer a tu sucursal seleccionada.')
+        return user.branch_id
+    return resolve_branch(user, requested)
+
+
 class ReporteService:
     @classmethod
     def generate(cls, db: Session, request: ReporteRequest, user: Usuario | None = None) -> ReporteResponse:
+        if request.all_companies or request.report_type == 'sales_by_company':
+            from app.servicios.reporte_global_service import generate_global
+            return generate_global(db, request, user)
         request = request.model_copy(deep=True)
         if user is not None:
-            request.branch_id = resolve_branch(user, request.branch_id)
+            request.branch_id = report_branch(user, request.branch_id)
+            request._customer_id = user.id if user.role == 'CUSTOMER' else None
         if request.branch_id and not db.query(Sucursal).filter(Sucursal.id == request.branch_id).first():
             raise SolicitudInvalidaException(detail="La sucursal seleccionada no existe")
         if request.date_from and request.date_to and request.date_from > request.date_to:
@@ -62,8 +77,10 @@ class ReporteService:
         scope = db.query(Sucursal).filter(Sucursal.id == request.branch_id).first() if request.branch_id else None
         summary["scope"] = scope.name if scope else "Todas las sucursales"
         return ReporteResponse(
+            customer_id=request._customer_id,
+            branch_id=request.branch_id,
             report_type=request.report_type,
-            title=REPORT_TITLES[request.report_type],
+            title=({'sales_by_branch':'Mis compras por sucursal','reservations_status':'Estado de mis reservas','reservations_by_branch':'Mis reservas por sucursal','registered_customers':'Mi cuenta registrada'}.get(request.report_type,REPORT_TITLES[request.report_type]) if request._customer_id else REPORT_TITLES[request.report_type]),
             generated_by="manual",
             summary=summary,
             columns=columns,
@@ -168,6 +185,8 @@ class ReporteService:
         query = db.query(Reserva).options(joinedload(Reserva.branch), joinedload(Reserva.customer))
         if request.branch_id:
             query = query.filter(Reserva.branch_id == request.branch_id)
+        if request._customer_id:
+            query = query.filter(Reserva.customer_id == request._customer_id)
         if request.status:
             query = query.filter(Reserva.status == request.status.upper())
         return query.order_by(Reserva.created_at.desc()).all()
@@ -201,7 +220,9 @@ class ReporteService:
     @staticmethod
     def _registered_customers(db: Session, request: ReporteRequest):
         query = db.query(Usuario).filter(Usuario.role == RolUsuario.CUSTOMER.value, Usuario.is_active == True)
-        if request.branch_id:
+        if request._customer_id:
+            query = query.filter(Usuario.id == request._customer_id)
+        if request.branch_id and not request._customer_id:
             query = query.filter(Usuario.id.in_(db.query(Reserva.customer_id).filter(Reserva.branch_id == request.branch_id)))
         customers = query.order_by(Usuario.created_at.desc()).all()
         rows = [{"customer": customer.full_name, "email": customer.email, "registered_at": customer.created_at} for customer in customers]
@@ -217,6 +238,9 @@ class ReporteService:
         if request.branch_id:
             payments = payments.filter(Pago.branch_id == request.branch_id)
             reservations = reservations.filter(Reserva.branch_id == request.branch_id)
+        if request._customer_id:
+            payments = payments.filter(Pago.customer_id == request._customer_id)
+            reservations = reservations.filter(Reserva.customer_id == request._customer_id)
         business_timezone = timezone(timedelta(hours=-4))  # America/La_Paz
         start = datetime.combine(request.date_from, time.min, business_timezone).astimezone(timezone.utc) if request.date_from else None
         end = datetime.combine(request.date_to + timedelta(days=1), time.min, business_timezone).astimezone(timezone.utc) if request.date_to else None
@@ -243,7 +267,7 @@ class ReporteService:
                 units = sum(item.quantity for item in payment.reservation.items)
             add(payment.branch_id, payment.currency, payment.amount, units)
         for reservation in reservations.all():
-            add(reservation.branch_id, settings.PAYPAL_CURRENCY, reservation.total_amount,
+            add(reservation.branch_id, 'USD' if reservation.payment_method=='WALLET' else settings.PAYPAL_CURRENCY, reservation.total_amount,
                 sum(item.quantity for item in reservation.items))
         rows = [{"branch": branches[b].name if b in branches else b, "currency": currency,
                  "sales": value["sales"], "units": value["units"], "amount": float(value["amount"])}

@@ -64,3 +64,9 @@ api_v1_router.include_router(synthetic_router)
 
 from app.api.v1.aporte_propio import router as own_router
 api_v1_router.include_router(own_router)
+
+from app.api.v1.wallet import router as wallet_router
+api_v1_router.include_router(wallet_router)
+
+from app.api.v1.push import router as push_router
+api_v1_router.include_router(push_router)

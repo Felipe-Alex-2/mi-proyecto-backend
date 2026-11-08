@@ -94,12 +94,10 @@ class StockService:
 
         for stock, variant, product, size, color, category in results:
             base_p = float(variant.price_override if variant.price_override is not None else product.price)
-            disc_pct = (
-                float(product.promotion.discount_percent)
-                if (product.promotion and product.promotion.is_active and product.promotion.discount_percent)
-                else None
-            )
-            eff_price = round(base_p * (1.0 - disc_pct / 100.0), 2) if (disc_pct and disc_pct > 0) else base_p
+            from app.servicios.aporte_propio_service import price
+            eff_price = float(price(variant))
+            disc_pct = round((1-eff_price/base_p)*100, 2) if base_p and eff_price < base_p else None
+
 
             items.append(
                 InventarioSucursalItem(

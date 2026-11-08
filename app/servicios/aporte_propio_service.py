@@ -137,47 +137,47 @@ def exchange(db, user, data):
     if old:
         resolve_branch(user, old.branch_id)
         return serialize(old)
-    p = db.query(Pago).filter(Pago.id == data.payment_id).with_for_update(of=Pago).populate_existing().first()
-    if not p or p.status != 'PAID' or not p.paid_at:
-        fail('Selecciona una compra pagada.', 404)
-    resolve_branch(user, p.branch_id)
+    from app.servicios.comprobante_cambio_service import source
+    from types import SimpleNamespace
+    sale = source(db, user, payment_id=data.payment_id, reservation_id=data.reservation_id, lock=True)
+    p = SimpleNamespace(**sale, tenant_id=db.info['tenant_id'], payment_code=sale['code'])
     branch(db, p.branch_id)
-    if now() - aware(p.paid_at) > timedelta(days=30):
-        fail('El plazo de cambios es de 30 días desde el pago.')
-    items = json.loads(p.items_detail or '[]')
+    items = sale['items']
     if data.original_line >= len(items):
         fail('El comprobante no contiene esa línea de compra.')
     item = items[data.original_line]
     returned_id = item.get('variant_id')
     if not returned_id or returned_id == data.new_variant_id:
-        fail('Elige una talla o color diferente del mismo producto.')
-    used = db.query(func.coalesce(func.sum(CambioPrenda.quantity), 0)).filter(
-        CambioPrenda.payment_id == p.id, CambioPrenda.original_line == data.original_line).scalar()
-    if used + data.quantity > int(item['quantity']):
+        fail('Elige otra prenda, talla o color del catálogo.')
+    if data.quantity > item['available_to_exchange']:
         fail('La cantidad supera las unidades de la compra que todavía pueden cambiarse.', 409)
     variants, rows = stocks(db, [returned_id, data.new_variant_id], [p.branch_id])
     returned, replacement = variants[returned_id], variants[data.new_variant_id]
-    if returned.product_id != replacement.product_id or not replacement.is_active or not replacement.product.is_active:
-        fail('La nueva variante debe estar activa y pertenecer al mismo producto.')
-    paid = money(Decimal(str(item.get('subtotal', Decimal(str(item['unit_price'])) * int(item['quantity'])))) / int(item['quantity']))
+    if not replacement.is_active or not replacement.product.is_active:
+        fail('La nueva prenda debe estar activa y disponible en el catálogo de esta empresa.')
+    original_quantity = int(item['quantity'])
+    original_subtotal = Decimal(str(item.get('subtotal', Decimal(str(item['unit_price'])) * original_quantity)))
+    already_returned = original_quantity - item['available_to_exchange']
+    credit = money(original_subtotal * (already_returned + data.quantity) / original_quantity) - money(item.get('credited_amount', 0))
+    paid = money(credit / data.quantity)
     new_price = price(replacement)
-    if new_price < paid:
+    if new_price * data.quantity < credit:
         fail('Esta versión permite cambios de igual o mayor precio; no admite devoluciones de dinero.')
-    difference = money((new_price - paid) * data.quantity)
+    difference = money(new_price * data.quantity - credit)
     if difference != data.expected_difference:
         fail('El precio cambió. Actualiza la selección y revisa la diferencia antes de cobrar.', 409)
     if difference > 0 and not data.confirm_cash:
         fail('Confirma que cobraste la diferencia en efectivo.')
-    move(db, user, rows, p.branch_id, data.new_variant_id, -data.quantity, attrs['id'], 'Salida por cambio de talla/color')
+    move(db, user, rows, p.branch_id, data.new_variant_id, -data.quantity, attrs['id'], 'Salida por cambio de prenda')
     move(db, user, rows, p.branch_id, returned_id, data.quantity, attrs['id'], 'Prenda devuelta apta para venta')
     receipt = Pago(id=str(uuid.uuid4()), tenant_id=p.tenant_id, payment_code='CAM-' + secrets.token_hex(5).upper(),
                    branch_id=p.branch_id, customer_id=p.customer_id, customer_name=p.customer_name,
-                   customer_email=p.customer_email, concept=f'Cambio de talla/color de {p.payment_code}',
+                   customer_email=p.customer_email, concept=f'Cambio de prenda de {p.payment_code}',
                    amount=difference, currency=p.currency, payment_type='EFECTIVO', status='PAID',
                    reference='CAMBIO:' + attrs['id'], cashier_id=user.id, paid_at=now(),
                    notes=f'{data.quantity} unidad(es). {returned.sku} → {replacement.sku}. Crédito unitario {paid}; nuevo precio {new_price}.')
     db.add(receipt)
-    result = CambioPrenda(**attrs, payment_id=p.id, receipt_payment_id=receipt.id, branch_id=p.branch_id,
+    result = CambioPrenda(**attrs, payment_id=sale['payment_id'], reservation_id=sale['reservation_id'], receipt_payment_id=receipt.id, branch_id=p.branch_id,
                          original_line=data.original_line, returned_variant_id=returned_id,
                          new_variant_id=replacement.id, quantity=data.quantity,
                          original_unit_price=paid, new_unit_price=new_price, difference=difference)
@@ -246,69 +246,8 @@ def balance(db, user_id):
     return int(db.query(func.coalesce(func.sum(MovimientoPuntos.points), 0)).filter(MovimientoPuntos.customer_id == user_id).scalar())
 
 
-def loyalty(db, user):
-    entries = db.query(MovimientoPuntos).filter(MovimientoPuntos.customer_id == user.id).order_by(MovimientoPuntos.created_at.desc()).limit(100)
-    rewards = db.query(BeneficioPuntos).filter(BeneficioPuntos.customer_id == user.id).order_by(BeneficioPuntos.created_at.desc()).limit(50)
-    return dict(balance=balance(db, user.id), points_per_bob=10, redeem_points=100,
-                discount_percent=10, max_discount_bob=20,
-                entries=[serialize(row) for row in entries], rewards=[serialize(row) for row in rewards])
-
-
-def redeem(db, user, data):
-    old, attrs = start(db, user, data, BeneficioPuntos)
-    if old:
-        return serialize(old)
-    db.query(Usuario).execution_options(skip_tenant=True).filter(Usuario.id == user.id).with_for_update().first()
-    if balance(db, user.id) < 100:
-        fail('Necesitas 100 puntos disponibles para canjear este beneficio.', 409)
-    row = BeneficioPuntos(**attrs, customer_id=user.id, code='VESTA-' + secrets.token_hex(5).upper(),
-                         status='AVAILABLE', expires_at=now() + timedelta(days=30), discount_amount=0)
-    db.add(row)
-    db.add(MovimientoPuntos(tenant_id=db.info['tenant_id'], customer_id=user.id,
-           source_key='redeem:' + row.id, points=-100, description='Canje: cupón 10%, máximo Bs 20, válido 30 días'))
-    audit(db, user, 'REGISTRO_CANJE_PUNTOS', f'Canje de 100 puntos: {row.code}')
-    db.commit()
-    return serialize(row)
-
-
-def apply_reward(db, user, data):
-    p = db.query(Pago).filter(Pago.id == data.payment_id).with_for_update(of=Pago).populate_existing().first()
-    if not p:
-        fail('Cobro no encontrado.', 404)
-    resolve_branch(user, p.branch_id)
-    reward = db.query(BeneficioPuntos).filter(BeneficioPuntos.code == data.code).with_for_update().populate_existing().first()
-    if not reward or reward.customer_id != p.customer_id:
-        fail('El cupón no pertenece al cliente identificado de este cobro.', 404)
-    if reward.status == 'USED' and reward.payment_id == p.id:
-        return serialize(reward)
-    if reward.status != 'AVAILABLE' or aware(reward.expires_at) <= now():
-        fail('El cupón ya fue utilizado o venció.', 409)
-    if p.status != 'PENDING' or p.paypal_order_id or p.reservation_id or p.currency != 'BOB' or not p.items_detail:
-        fail('Aplica el cupón a una venta directa en BOB pendiente, antes de iniciar su pago.')
-    if db.query(BeneficioPuntos).filter(BeneficioPuntos.payment_id == p.id).first():
-        fail('Esta compra ya tiene un cupón.', 409)
-    items = json.loads(p.items_detail)
-    for item in items:
-        variant = db.query(VarianteProducto).filter(VarianteProducto.id == item['variant_id']).first()
-        if not variant or price(variant) < money(variant.price_override if variant.price_override is not None else variant.product.price):
-            fail('El cupón no se combina con promociones activas.')
-    discount = min(money(p.amount * Decimal('.10')), Decimal('20.00'))
-    if discount <= 0:
-        fail('El importe no permite aplicar el cupón.')
-    ratio = (money(p.amount) - discount) / money(p.amount)
-    for item in items:
-        item['unit_price'] = float(money(Decimal(str(item['unit_price'])) * ratio))
-        item['subtotal'] = float(money(Decimal(str(item['unit_price'])) * int(item['quantity'])))
-    # Charge the sum of rounded unit prices; receipt and subsequent exchanges agree.
-    new_amount = sum((money(i['subtotal']) for i in items), Decimal('0'))
-    actual_discount = money(p.amount) - new_amount
-    if actual_discount <= 0 or actual_discount > 20:
-        fail('No se puede redondear el cupón para estas cantidades. Divide la venta en líneas menores.')
-    p.amount, p.items_detail = new_amount, json.dumps(items)
-    reward.status, reward.payment_id, reward.discount_amount = 'USED', p.id, actual_discount
-    audit(db, user, 'REGISTRO_APLICAR_BENEFICIO', f'{reward.code} aplicado a {p.payment_code}: Bs {actual_discount}', p.branch_id)
-    db.commit()
-    return serialize(reward)
+# Loyalty operations live together so checkout and staff use identical validation.
+from app.servicios.puntos_service import loyalty, redeem, apply_reward
 
 
 DELIVERY_FEES = {'CENTRO': Decimal('15.00'), 'PERIFERIA': Decimal('25.00')}

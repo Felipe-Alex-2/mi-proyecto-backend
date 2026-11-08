@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.base_datos import get_db
 from app.api.dependencias import get_current_user, require_roles
 from app.modelos.usuario import RolUsuario
-from app.esquemas.aporte_propio import CambioCreate, TrasladoCreate, Solicitud, AplicarBeneficio, EntregaCreate, EntregaEstado
+from app.esquemas.aporte_propio import CambioCreate, TrasladoCreate, Solicitud, CanjePuntos, CotizacionCupon, RetirarCaja, AplicarBeneficio, EntregaCreate, EntregaEstado
 from app.servicios import aporte_propio_service as service
 
 router = APIRouter(prefix='/own', tags=['Aporte Propio CU19–CU23'])
@@ -38,7 +38,10 @@ def stock(branch_id: str, user=Depends(staff), db: Session=Depends(get_db)):
 
 
 @router.get('/purchases')
-def purchases(search: str = Query('', max_length=100), user=Depends(get_current_user), db: Session=Depends(get_db)):
+def purchases(search: str = Query('', max_length=100), for_exchange: bool = False, user=Depends(get_current_user), db: Session=Depends(get_db)):
+    if for_exchange:
+        from app.servicios.comprobante_cambio_service import search as search_receipts
+        return search_receipts(db, user, search)
     return service.purchases(db, user, search)
 
 
@@ -68,7 +71,7 @@ def loyalty(user=Depends(customer), db: Session=Depends(get_db)):
 
 
 @router.post('/loyalty/redeem', status_code=201)
-def redeem(data: Solicitud, user=Depends(customer), db: Session=Depends(get_db)):
+def redeem(data: CanjePuntos, user=Depends(customer), db: Session=Depends(get_db)):
     return service.redeem(db, user, data)
 
 
@@ -90,3 +93,23 @@ def create_delivery(data: EntregaCreate, user=Depends(get_current_user), db: Ses
 @router.patch('/deliveries/{delivery_id}')
 def update_delivery(delivery_id: str, data: EntregaEstado, user=Depends(staff), db: Session=Depends(get_db)):
     return service.delivery_status(db, user, delivery_id, data)
+
+
+@router.get('/loyalty/ranking')
+def ranking(user=Depends(staff), db: Session=Depends(get_db)):
+    from app.servicios.puntos_service import leaderboard
+    return leaderboard(db)
+
+
+@router.post('/loyalty/quote')
+def coupon_quote(data: CotizacionCupon, user=Depends(get_current_user), db: Session=Depends(get_db)):
+    from app.servicios.puntos_service import quote
+    if user.role not in ('CUSTOMER', 'ADMIN', 'STORE_MANAGER', 'CASHIER'):
+        service.fail('No autorizado.', 403)
+    return quote(db, user, data)
+
+
+@router.post('/loyalty/claim')
+def claim_box(data: RetirarCaja, user=Depends(staff), db: Session=Depends(get_db)):
+    from app.servicios.puntos_service import claim
+    return claim(db, user, data)

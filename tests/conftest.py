@@ -19,6 +19,10 @@ os.environ["SMTP_PASSWORD"] = ""
 os.environ["PAYPAL_CLIENT_ID"] = ""
 os.environ["PAYPAL_CLIENT_SECRET"] = ""
 os.environ["GEMINI_API_KEY"] = ""
+os.environ["FIREBASE_PUSH_ENABLED"] = "false"
+os.environ["FIREBASE_CREDENTIALS_JSON"] = ""
+os.environ["FIREBASE_CLIENT_EMAIL"] = ""
+os.environ["FIREBASE_PRIVATE_KEY"] = ""
 os.environ["VTON_URL"] = ""
 
 from app.base_datos import Base, get_db

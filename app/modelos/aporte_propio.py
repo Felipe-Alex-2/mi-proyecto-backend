@@ -16,7 +16,8 @@ class DocumentoAporte(PerteneceEmpresa):
 
 class CambioPrenda(DocumentoAporte, Base):
     __tablename__ = 'garment_exchanges'
-    payment_id = Column(String(36), ForeignKey('payments.id'), nullable=False, index=True)
+    payment_id = Column(String(36), ForeignKey('payments.id'), nullable=True, index=True)
+    reservation_id = Column(String(36), ForeignKey('reservations.id'), nullable=True, index=True)
     receipt_payment_id = Column(String(36), ForeignKey('payments.id'), nullable=False)
     branch_id = Column(String(36), ForeignKey('branches.id'), nullable=False)
     original_line = Column(Integer, nullable=False)
@@ -60,6 +61,15 @@ class BeneficioPuntos(DocumentoAporte, Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     payment_id = Column(String(36), ForeignKey('payments.id'), nullable=True, unique=True)
     discount_amount = Column(Numeric(10, 2), nullable=False, default=0)
+    reward_type = Column(String(20), nullable=False, default='COUPON')
+    points_cost = Column(Integer, nullable=False, default=100)
+    discount_percent = Column(Integer, nullable=False, default=10)
+    max_discount = Column(Numeric(10, 2), nullable=True, default=20)
+    reservation_id = Column(String(36), ForeignKey('reservations.id'), nullable=True, unique=True)
+    fulfilled_variant_id = Column(String(36), ForeignKey('product_variants.id'), nullable=True)
+    fulfilled_branch_id = Column(String(36), ForeignKey('branches.id'), nullable=True)
+    fulfilled_by = Column(String(36), ForeignKey('users.id'), nullable=True)
+    fulfilled_at = Column(DateTime(timezone=True), nullable=True)
     __table_args__ = (UniqueConstraint('tenant_id', 'request_id'),)
 
 

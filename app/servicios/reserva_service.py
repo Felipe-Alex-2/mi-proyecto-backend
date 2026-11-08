@@ -49,6 +49,13 @@ class ReservaService:
 
     @staticmethod
     def _enrich_reservation(r: Reserva) -> ReservaResponse:
+        import json
+        from sqlalchemy.orm import object_session
+        from app.modelos.pago import Pago
+        frozen = {item['variant_id']: item for item in json.loads(r.receipt_items_detail or '[]')}
+        session = object_session(r)
+        paid_payment = session.query(Pago).filter(Pago.reservation_id == r.id, Pago.status == 'PAID').first() if session and r.payment_status == 'PAID' else None
+        issued = r.paid_at.replace(tzinfo=timezone.utc) if r.paid_at and r.paid_at.tzinfo is None else r.paid_at
         items_resp: List[ReservaItemResponse] = []
         total_items = 0
         total_estimated = 0.0
@@ -66,6 +73,10 @@ class ReservaService:
             else:
                 price = orig_price
 
+            if item.variant_id in frozen:
+                price = float(frozen[item.variant_id]['unit_price'])
+                orig_price = float(frozen[item.variant_id].get('original_unit_price',price))
+                discount_percent = frozen[item.variant_id].get('wholesale_discount_percent') or None
             total_items += item.quantity
             total_estimated += price * item.quantity
 
@@ -87,11 +98,18 @@ class ReservaService:
                 )
             )
 
+        from app.servicios.venta_mayor_service import stored_summary
+        breakdown = stored_summary(list(frozen.values()), r.total_amount if r.total_amount is not None else total_estimated)
         resp = ReservaResponse(
+            **breakdown,
             tenant_id=r.tenant_id,
             company_name=r.company.name if r.company else None,
             id=r.id,
             reservation_code=r.reservation_code,
+            exchange_code=r.reservation_code if r.payment_status == 'PAID' else None,
+            receipt_issued_at=issued if r.payment_status == 'PAID' else None,
+            currency=paid_payment.currency if paid_payment else 'USD',
+            exchange_deadline=(issued + timedelta(hours=48)) if r.payment_status == 'PAID' and issued else None,
             customer_id=r.customer_id,
             branch_id=r.branch_id,
             status=r.status,
@@ -127,6 +145,10 @@ class ReservaService:
     ) -> ReservaResponse:
         if db.info.get('customer_branch_id') and data.branch_id != db.info['customer_branch_id']:
             raise SolicitudInvalidaException(detail='La reserva debe pertenecer a tu sucursal seleccionada.')
+        if data.payment_method == 'WALLET':
+            from app.servicios.wallet_service import checkout_retry
+            previous=checkout_retry(db,customer,data)
+            if previous:return cls._enrich_reservation(previous)
         cls._lock_allocation(db, customer.id, data)
         # Check active reservations count
         active_count = (
@@ -178,18 +200,16 @@ class ReservaService:
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(hours=48)
 
-        # Calculate estimated total amount with active promotion discounts
-        total_estimated = 0.0
-        for item_in in data.items:
-            v = db.query(VarianteProducto).filter(VarianteProducto.id == item_in.variant_id).first()
-            if v and v.product and v.product.price is not None:
-                p = v.product
-                orig_price = float(p.price)
-                if p.promotion and p.promotion.is_active and p.promotion.discount_percent:
-                    eff_price = round(orig_price * (1.0 - float(p.promotion.discount_percent) / 100.0), 2)
-                else:
-                    eff_price = orig_price
-                total_estimated += eff_price * item_in.quantity
+        import json
+        from app.servicios.venta_mayor_service import reservation_quote
+        quoted_lines, totals = reservation_quote(db, data.items)
+        reward = None
+        if data.coupon_code:
+            from app.servicios.puntos_service import coupon, discount
+            reward = coupon(db, customer.id, data.coupon_code)
+            quoted_lines, net, savings = discount(quoted_lines, reward)
+            totals['total_amount'] = net
+        total_estimated = float(totals['total_amount'])
 
         reservation = Reserva(
             reservation_code=code,
@@ -200,11 +220,15 @@ class ReservaService:
             payment_method=data.payment_method or "EFECTIVO",
             payment_status="PENDING",
             total_amount=round(total_estimated, 2),
+            receipt_items_detail=json.dumps(quoted_lines),
             created_at=now,
             expires_at=expires_at,
         )
         db.add(reservation)
         db.flush()
+        if reward:
+            from app.servicios.puntos_service import bind
+            bind(reward, reservation=reservation, savings=savings)
 
         for item_in in data.items:
             stock = (
@@ -227,6 +251,14 @@ class ReservaService:
                 quantity=item_in.quantity,
             )
             db.add(res_item)
+
+        db.flush()
+        from app.servicios.comprobante_cambio_service import freeze_quote
+        freeze_quote(reservation)
+
+        if data.payment_method == 'WALLET':
+            from app.servicios.wallet_service import pay_reservation
+            pay_reservation(db, customer, reservation, data)
 
         # Auto-remove reserved variants from customer's cart
         if variant_ids_in_reservation:
@@ -313,6 +345,17 @@ class ReservaService:
             total_amount += price * item_in.quantity
             variant_ids_in_reservation.append(item_in.variant_id)
 
+        import json
+        from app.servicios.venta_mayor_service import reservation_quote
+        quoted_lines, totals = reservation_quote(db, data.items)
+        reward = None
+        if data.coupon_code:
+            from app.servicios.puntos_service import coupon, discount
+            reward = coupon(db, customer.id, data.coupon_code)
+            quoted_lines, net, savings = discount(quoted_lines, reward)
+            totals['total_amount'] = net
+        total_amount = float(totals['total_amount'])
+
         code = f"RSV-{uuid.uuid4().hex[:6].upper()}"
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(hours=48)
@@ -337,11 +380,15 @@ class ReservaService:
             payment_status="PENDING",
             paypal_order_id=paypal_order_id,
             total_amount=round(total_amount, 2),
+            receipt_items_detail=json.dumps(quoted_lines),
             created_at=now,
             expires_at=expires_at,
         )
         db.add(reservation)
         db.flush()
+        if reward:
+            from app.servicios.puntos_service import bind
+            bind(reward, reservation=reservation, savings=savings)
 
         for item_in in data.items:
             stock = (
@@ -370,6 +417,9 @@ class ReservaService:
                 CarritoItem.variant_id.in_(variant_ids_in_reservation),
             ).delete(synchronize_session=False)
 
+        db.flush()
+        from app.servicios.comprobante_cambio_service import freeze_quote
+        freeze_quote(reservation)
         commit_or_flush(db)
         db.refresh(reservation)
 

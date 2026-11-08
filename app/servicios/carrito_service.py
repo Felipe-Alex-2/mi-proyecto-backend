@@ -32,16 +32,10 @@ class CarritoService:
             if not v:
                 continue
 
-            original_price = float(v.product.price) if (v.product and v.product.price is not None) else 0.0
-            discount_percent = (
-                float(v.product.promotion.discount_percent)
-                if (v.product and v.product.promotion and v.product.promotion.is_active and v.product.promotion.discount_percent)
-                else None
-            )
-            if discount_percent and discount_percent > 0:
-                price = round(original_price * (1.0 - (discount_percent / 100.0)), 2)
-            else:
-                price = original_price
+            from app.servicios.aporte_propio_service import price as effective_price
+            original_price = float(v.price_override if v.price_override is not None else v.product.price)
+            price = float(effective_price(v))
+            discount_percent = round((1-price/original_price)*100, 2) if original_price and price < original_price else None
 
             subtotal = round(price * item.quantity, 2)
             total_items += item.quantity
@@ -71,10 +65,12 @@ class CarritoService:
             )
             response_items.append(resp_item)
 
+        from app.servicios.venta_mayor_service import summary
+        totals = summary(total_amount, total_items)
         return CarritoResponse(
+            **totals,
             items=response_items,
             total_items=total_items,
-            total_amount=round(total_amount, 2),
         )
 
     @classmethod

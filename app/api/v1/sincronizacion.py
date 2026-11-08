@@ -84,10 +84,8 @@ def dispatch(db, user, command):
             if available.get(item.variant_id, 0) < item.quantity:
                 from app.nucleo.excepciones import insufficient_stock
                 insufficient_stock(db, item.variant_id, variant.product.name, available.get(item.variant_id, 0), item.quantity)
-            base_price = float(variant.price_override if variant.price_override is not None else variant.product.price)
-            promotion = variant.product.promotion
-            discount = float(promotion.discount_percent) if promotion and promotion.is_active and promotion.discount_percent else 0
-            expected_price = round(base_price * (1 - discount / 100), 2)
+            from app.servicios.aporte_propio_service import price
+            expected_price = price(variant)
             if Decimal(str(item.unit_price)).quantize(Decimal('.01')) != Decimal(str(expected_price)).quantize(Decimal('.01')):
                 raise HTTPException(409, f'El precio de {variant.product.name} cambió. Revisa la venta con el cliente.')
         payment = PagoService.create_payment(db, user, data)
