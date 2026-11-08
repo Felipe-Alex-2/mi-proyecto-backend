@@ -124,7 +124,7 @@ def configure_context(db, user, request):
     db.info['personal_history'] = history
     # Suscripcion management, identity and personal history remain accessible
     # after expiry so an administrator can renew and a customer can see receipts.
-    excluded = ('/api/v1/backups', '/api/v1/saas', '/api/v1/auth', '/api/v1/users/me', '/api/v1/notifications', '/api/v1/sync')
+    excluded = ('/api/v1/reports', '/api/v1/backups', '/api/v1/saas', '/api/v1/auth', '/api/v1/users/me', '/api/v1/notifications', '/api/v1/sync')
     if not path.startswith(excluded) and not history:
         from app.servicios.saas_service import enforce_subscription
         enforce_subscription(db, db.info['tenant_id'], write=request.method != 'GET')

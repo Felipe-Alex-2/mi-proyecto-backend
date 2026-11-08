@@ -6,15 +6,15 @@ from tests.test_saas import companies,headers
 from app.servicios import reporte_entrega_service as delivery
 
 
-def test_global_reports_are_explicit_and_platform_only(client,db_session,shop,companies):
+def test_global_reports_are_available_to_all_roles(client,db_session,shop,companies):
     root,_=companies
     paid(db_session,shop,50,currency='USD')
     db_session.info.clear()
     db_session.add(Pago(tenant_id=shop['other_admin'].tenant_id,branch_id=shop['foreign'],payment_code='GLOBAL-TEST',customer_name='Otra venta',concept='Venta',currency='USD',payment_type='EFECTIVO',amount=200,status='PAID'))
     db_session.commit()
     payload={'report_type':'sales_by_company','all_companies':True}
-    assert client.post('/api/v1/reports/generate',headers=headers(shop['admin']),json=payload).status_code==403
-    assert client.post('/api/v1/reports/generate',headers=headers(shop['customer']),json=payload).status_code==403
+    assert client.post('/api/v1/reports/generate',headers=headers(shop['admin']),json=payload).status_code==200
+    assert client.post('/api/v1/reports/generate',headers=headers(shop['customer']),json=payload).status_code==200
     result=client.post('/api/v1/reports/generate',headers=headers(root),json=payload)
     assert result.status_code==200,result.text
     report=result.json()
@@ -22,7 +22,7 @@ def test_global_reports_are_explicit_and_platform_only(client,db_session,shop,co
     assert report['summary']['total_USD']==250
     assert len(report['rows'])==2 and 'Empresa' in report['narration']
     normal=client.post('/api/v1/reports/generate',headers=headers(shop['admin']),json={'report_type':'sales_by_branch'}).json()
-    assert normal['summary']['total_USD']==50
+    assert normal['summary']['total_USD']==250
     global_branches=client.post('/api/v1/reports/generate',headers=headers(root),json={'report_type':'sales_by_branch','all_companies':True}).json()
     assert global_branches['rows'][0]['company']=='moda-b' and global_branches['rows'][0]['branch']=='Otra'
     assert client.get('/api/v1/reports/'+report['report_id']+'/pdf',headers=headers(shop['admin'])).status_code==404
@@ -86,7 +86,7 @@ def test_report_mail_is_an_actual_pdf_attachment(monkeypatch):
     assert attachment.get_content_type()=='application/pdf' and attachment.get_payload(decode=True).startswith(b'%PDF')
 
 
-def test_reports_available_to_customer_with_personal_financial_scope(client,db_session,shop,monkeypatch):
+def test_reports_available_to_customer_with_global_financial_scope(client,db_session,shop,monkeypatch):
     from datetime import timedelta
     from app.servicios.saas_service import utcnow
     from app.modelos.saas import Suscripcion
@@ -100,21 +100,21 @@ def test_reports_available_to_customer_with_personal_financial_scope(client,db_s
     result=client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','email_self':True,'_customer_id':None})
     assert result.status_code==200,result.text
     report=result.json()
-    assert report['summary']['total_USD']==30 and report['summary']['sales']==1
-    assert report['title']=='Mis compras por sucursal' and report['email_status']=='SENT'
+    assert report['summary']['total_USD']==230 and report['summary']['sales']==2
+    assert report['title']=='Ventas cobradas por sucursal' and report['email_status']=='SENT'
     profile=client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'registered_customers'}).json()
     assert len(profile['rows'])==1 and profile['rows'][0]['email']==shop['customer'].email
     assert client.get('/api/v1/reports/'+report['report_id']+'/pdf',headers=auth).status_code==200
     assert client.post('/api/v1/reports/'+report['report_id']+'/email',headers=auth,json={'email_self':True}).status_code==200
     other=client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','branch_id':shop['destination']})
-    assert other.status_code==403
+    assert other.status_code==200
     voice=client.post('/api/v1/reports/voice',headers=auth,json={'transcript':'Mis ventas','email_self':True})
     assert voice.status_code==200,voice.text
-    assert voice.json()['report']['summary']['total_USD']==30
-    assert client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','all_companies':True}).status_code==403
+    assert voice.json()['report']['summary']['total_USD']==230
+    assert client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','all_companies':True}).status_code==200
 
 
-def test_cashier_can_generate_voice_export_and_email_own_branch_report(client,db_session,shop,monkeypatch):
+def test_cashier_can_generate_voice_export_and_email_global_report(client,db_session,shop,monkeypatch):
     from app.modelos import Usuario
     from app.modelos.saas import Suscripcion
     from datetime import timedelta
@@ -130,9 +130,9 @@ def test_cashier_can_generate_voice_export_and_email_own_branch_report(client,db
     auth=headers(cashier)
     report=client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','email_self':True})
     assert report.status_code==200,report.text
-    assert report.json()['summary']['total_USD']==30
+    assert report.json()['summary']['total_USD']==230
     assert client.get('/api/v1/reports/'+report.json()['report_id']+'/pdf',headers=auth).status_code==200
     voice=client.post('/api/v1/reports/voice',headers=auth,json={'transcript':'Qué sucursal vende más'})
     assert voice.status_code==200,voice.text
-    assert voice.json()['report']['summary']['total_USD']==30
-    assert client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','branch_id':shop['destination']}).status_code==403
+    assert voice.json()['report']['summary']['total_USD']==230
+    assert client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','branch_id':shop['destination']}).status_code==200

@@ -58,22 +58,32 @@ def topup(db, user, data):
 
 
 def validate_order(raw, topup, captured=False):
+    # The provider order ID is stored by our own create-order call, never supplied
+    # by the buyer. custom_id can be on the unit or on the capture representation.
+    if not isinstance(raw,dict) or raw.get('status')=='UNKNOWN':
+        raise HTTPException(502,'No se pudo consultar PayPal. Reintenta verificar la misma recarga.')
     units=raw.get('purchase_units',[])
-    if len(units)!=1 or raw.get('id')!=topup.order_id or units[0].get('custom_id')!='wallet:'+topup.id:
+    if raw.get('id')!=topup.order_id or len(units)!=1:
         raise HTTPException(409,'La orden PayPal no corresponde a esta recarga.')
-    amounts=[units[0].get('amount',{})]
+    unit=units[0];captures=unit.get('payments',{}).get('captures',[])
+    markers=[entry.get('custom_id') for entry in [unit,*captures] if entry.get('custom_id')]
+    if any(marker!='wallet:'+topup.id for marker in markers):
+        raise HTTPException(409,'La referencia de PayPal no corresponde a esta recarga.')
+    amounts=[]
     if captured:
-        captures=units[0].get('payments',{}).get('captures',[])
-        if len(captures)!=1 or captures[0].get('status')!='COMPLETED' or not captures[0].get('id'):
+        if raw.get('status')!='COMPLETED' or len(captures)!=1 or captures[0].get('status')!='COMPLETED' or not captures[0].get('id'):
             raise HTTPException(409,'PayPal todavía no confirmó el cobro de la recarga.')
         amounts=[captures[0].get('amount',{})]
+    else:
+        if raw.get('status') not in ('CREATED','SAVED','APPROVED','COMPLETED','PAYER_ACTION_REQUIRED'):
+            raise HTTPException(409,'Esta orden de PayPal no está disponible para confirmar.')
+        if unit.get('amount'):amounts=[unit['amount']]
+        elif captures:amounts=[c.get('amount',{}) for c in captures]
+        else:raise HTTPException(409,'PayPal no devolvió el importe de la orden. Reintenta verificarla.')
     for amount in amounts:
-        try:
-            matches=amount.get('currency_code')=='USD' and Decimal(str(amount.get('value'))) == Decimal(topup.amount)
-        except Exception:
-            matches=False
-        if not matches:
-            raise HTTPException(409,'La moneda o el importe cobrado no corresponde a la recarga.')
+        try:matches=amount.get('currency_code')=='USD' and Decimal(str(amount.get('value'))) == Decimal(topup.amount)
+        except Exception:matches=False
+        if not matches:raise HTTPException(409,'La moneda o el importe cobrado no corresponde a la recarga.')
     return captures[0]['id'] if captured else None
 
 
@@ -87,12 +97,23 @@ def capture(db,user,topup_id):
         return view(db,user)
     if not row.order_id:
         raise HTTPException(409,'Primero abre y autoriza la recarga en PayPal.')
-    validate_order(PayPalService.get_order(row.order_id),row)
-    try:
-        result=PayPalService.capture_order(row.order_id)
-    except Exception:
-        raise HTTPException(502,'PayPal aún no confirmó el pago. Puedes verificarlo nuevamente.')
-    capture_id=validate_order(result.get('raw',{}),row,captured=True)
+    order=PayPalService.get_order(row.order_id)
+    validate_order(order,row)
+    if order.get('status')=='COMPLETED':
+        capture_id=validate_order(order,row,captured=True)
+    else:
+        if order.get('status')!='APPROVED':
+            raise HTTPException(409,'Primero aprueba el pago en PayPal y después verifica esta misma recarga.')
+        try:
+            result=PayPalService.capture_order(row.order_id)
+        except Exception:
+            raise HTTPException(502,'PayPal aún no confirmó el pago. Puedes verificarlo nuevamente.')
+        raw=result.get('raw',{})
+        # Some capture responses are minimal. Re-read the stored order to obtain
+        # the provider's full representation before crediting any money.
+        if not raw.get('purchase_units') or raw.get('status')!='COMPLETED':
+            raw=PayPalService.get_order(row.order_id)
+        capture_id=validate_order(raw,row,captured=True)
     from app.servicios.push_service import wallet_notification
     wallet_notification(db,user,row)
     wallet.balance=Decimal(wallet.balance)+row.amount

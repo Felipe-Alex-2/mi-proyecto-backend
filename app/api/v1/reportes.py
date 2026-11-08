@@ -12,6 +12,15 @@ router = APIRouter(prefix="/reports", tags=["Dashboards and Reports (CU19)"])
 report_reader = require_roles(RolUsuario.ADMIN, RolUsuario.STORE_MANAGER, RolUsuario.CASHIER, RolUsuario.CUSTOMER)
 
 
+@router.get('/branches')
+def report_branches(db:Session=Depends(get_db),current_user:Usuario=Depends(report_reader)):
+    from app.modelos.saas import Empresa,ROOT_TENANT_ID
+    from app.modelos.sucursal import Sucursal
+    names={c.id:c.name for c in db.query(Empresa).filter(Empresa.id!=ROOT_TENANT_ID).all()}
+    return [dict(id=b.id,name=b.name,city=b.city,tenant_id=b.tenant_id,company_name=names[b.tenant_id])
+        for b in db.query(Sucursal).execution_options(skip_tenant=True).filter(Sucursal.is_active==True).order_by(Sucursal.name).all() if b.tenant_id in names]
+
+
 @router.get('/dashboard')
 def dashboard_summary(
     months: int = Query(1, ge=1, le=12),
@@ -45,17 +54,14 @@ def generate_report(
     "/voice",
     response_model=ReporteVozResponse,
     status_code=status.HTTP_200_OK,
-    summary="Interpretar una consulta de voz con Gemini y generar el reporte",
+    summary="Interpretar una consulta de voz o texto y generar el reporte",
 )
 def generate_voice_report(
     payload: ReporteVozRequest,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(report_reader),
 ):
-    from app.servicios.saas_service import enforce_subscription
     from app.servicios.reporte_entrega_service import finish
-    if not current_user.is_saas_admin:
-        enforce_subscription(db, db.info.get("tenant_id"), ai=True)
     interpretation, report = ReporteGeminiService.generate(db=db, transcript=payload.transcript, user=current_user, branch_id=payload.branch_id, all_companies=payload.all_companies)
     report=finish(db,current_user,report,payload)
     return ReporteVozResponse(transcript=payload.transcript,interpretation=interpretation,report=report)

@@ -83,9 +83,9 @@ def test_company_isolation_and_repeated_catalog_names(client,db_session,companie
         assert all(u['tenant_id']==admin.tenant_id for u in users)
     response=client.post('/api/v1/reports/generate',headers=headers(admin_a),json={'report_type':'inventory_by_branch'})
     assert response.status_code==200,response.text
-    assert [r['branch'] for r in response.json()['rows']]==['Centro']
+    assert len(response.json()['rows'])==2
     assert client.post('/api/v1/reports/generate',headers=headers(admin_a),json={
-        'report_type':'inventory_by_branch','branch_id':bb['id']}).status_code==400
+        'report_type':'inventory_by_branch','branch_id':bb['id']}).status_code==200
 
 
 def test_plan_limits_reopening_and_backend_ai_gate(client,db_session,companies,monkeypatch):
@@ -93,7 +93,8 @@ def test_plan_limits_reopening_and_backend_ai_gate(client,db_session,companies,m
     one=create_branch(client,admin,'Uno').json()
     assert create_branch(client,admin,'Dos').status_code==201
     assert create_branch(client,admin,'Tres').status_code==409
-    assert client.post('/api/v1/reports/voice',headers=headers(admin),json={'transcript':'Qué sucursal vendió más'}).status_code==403
+    assert client.post('/api/v1/reports/voice',headers=headers(admin),json={'transcript':'Qué sucursal vendió más'}).status_code==200
+    assert client.post('/api/v1/reports/voice',headers=headers(admin),json={'transcript':'Promedio de pagos agrupados por forma de pago'}).status_code==400
     assert client.patch('/api/v1/branches/'+one['id']+'/toggle-status',headers=headers(admin)).status_code==200
     assert create_branch(client,admin,'Tres').status_code==201
     assert client.patch('/api/v1/branches/'+one['id']+'/toggle-status',headers=headers(admin)).status_code==409

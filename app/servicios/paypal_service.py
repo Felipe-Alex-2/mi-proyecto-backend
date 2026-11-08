@@ -130,6 +130,7 @@ class PayPalService:
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
                 "PayPal-Request-Id": f"capture-{order_id}",
+                "Prefer": "return=representation",
             },
             timeout=30.0,
         )

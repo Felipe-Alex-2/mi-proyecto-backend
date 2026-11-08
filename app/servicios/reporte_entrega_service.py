@@ -8,7 +8,11 @@ from app.configuracion import settings
 from app.modelos.reporte_guardado import ReporteGuardado
 from app.esquemas.reporte import ReporteResponse
 
-LABELS={'company':'Empresa','companies':'Empresas','branch':'Sucursal','city':'Ciudad','units':'Unidades','sales':'Cobros realizados',
+LABELS={'company_name':'Empresa','branch_name':'Sucursal','payment_code':'Código de comprobante',
+ 'concept':'Concepto','paid_at':'Fecha de pago','payment_type':'Forma de pago','reference':'Referencia',
+ 'exchange_code':'Código para cambios','exchange_limit':'Plazo de cambio','price':'Precio unitario',
+ 'size':'Talla','color':'Color','address':'Dirección','matching_records':'Registros encontrados','groups':'Grupos',
+ 'company':'Empresa','companies':'Empresas','branch':'Sucursal','city':'Ciudad','units':'Unidades','sales':'Cobros realizados',
  'amount':'Importe cobrado','currency':'Moneda','scope':'Ámbito','total_units':'Unidades totales','branches':'Sucursales','records':'Registros',
  'product':'Prenda','products':'Prendas','category':'Categoría','categories':'Categorías','season':'Temporada','seasons':'Temporadas',
  'supplier':'Proveedor','suppliers':'Proveedores','customer':'Cliente','customers':'Clientes','email':'Correo','status':'Estado',
@@ -17,6 +21,8 @@ LABELS={'company':'Empresa','companies':'Empresas','branch':'Sucursal','city':'C
 
 
 def label(key):
+    for prefix,title in [('sum_','Total de '),('avg_','Promedio de '),('count_','Cantidad de '),('distinct_','Valores distintos de '),('min_','Mínimo de '),('max_','Máximo de ')]:
+        if key.startswith(prefix):return title+label(key[len(prefix):])
     if key.startswith('leader_'): return 'Mayor venta en '+key[7:]
     if key.startswith('total_') and key not in LABELS: return 'Total en '+key[6:]
     return LABELS.get(key,key.replace('_',' '))
@@ -103,14 +109,6 @@ def finish(db,user,report,payload):
 
 
 def owned(db,user,id):
-    row=db.query(ReporteGuardado).filter(ReporteGuardado.id==id,ReporteGuardado.user_id==user.id).first()
+    row=db.query(ReporteGuardado).execution_options(skip_tenant=True).filter(ReporteGuardado.id==id,ReporteGuardado.user_id==user.id).first()
     if not row:raise HTTPException(404,'Reporte no encontrado en esta cuenta y empresa.')
-    # A saved global report still requires the platform permission at download time.
-    report=ReporteResponse.model_validate_json(row.result_json)
-    if user.role=='CUSTOMER' and report.customer_id!=user.id:
-        raise HTTPException(403,'Este reporte no corresponde a tus datos personales.')
-    if user.role in ('CASHIER','STORE_MANAGER') and (not user.branch_id or report.branch_id!=user.branch_id):
-        raise HTTPException(403,'Este reporte no corresponde a tu sucursal asignada.')
-    if report.summary.get('scope')=='Todas las empresas y sus sucursales' and not user.is_saas_admin:
-        raise HTTPException(403,'Solo el superadmin puede acceder a este reporte global.')
     return row

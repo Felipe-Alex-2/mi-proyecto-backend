@@ -14,12 +14,14 @@ from app.modelos.reserva import Reserva
 from app.modelos.stock import Stock
 from app.modelos.usuario import Usuario, RolUsuario
 from app.modelos.pago import Pago
-from app.nucleo.ambito_sucursal import resolve_branch
 from app.configuracion import settings
 from app.esquemas.reporte import ReporteRequest, ReporteResponse
 
 
 REPORT_TITLES = {
+    "products_detail": "Detalle de prendas en stock",
+    "payments_detail": "Detalle de pagos",
+    "wallet_topups": "Recargas de wallet",
     "inventory_by_branch": "Stock disponible por sucursal",
     "products_by_category": "Productos por categoría",
     "products_by_season": "Productos por temporada",
@@ -32,32 +34,26 @@ REPORT_TITLES = {
 }
 
 
-def report_branch(user, requested=None):
-    if user.role == 'CUSTOMER':
-        from fastapi import HTTPException
-        if not user.branch_id:
-            raise HTTPException(403,'Selecciona una empresa y sucursal para consultar tus reportes.')
-        if requested and requested != user.branch_id:
-            raise HTTPException(403,'El reporte debe pertenecer a tu sucursal seleccionada.')
-        return user.branch_id
-    return resolve_branch(user, requested)
-
-
 class ReporteService:
     @classmethod
     def generate(cls, db: Session, request: ReporteRequest, user: Usuario | None = None) -> ReporteResponse:
-        if request.all_companies or request.report_type == 'sales_by_company':
+        if request.report_type in ('companies_list','branches_list'):
+            from app.servicios.reporte_directorio_service import directory
+            return directory(db,request,user)
+        if user is not None:
             from app.servicios.reporte_global_service import generate_global
             return generate_global(db, request, user)
         request = request.model_copy(deep=True)
-        if user is not None:
-            request.branch_id = report_branch(user, request.branch_id)
-            request._customer_id = user.id if user.role == 'CUSTOMER' else None
         if request.branch_id and not db.query(Sucursal).filter(Sucursal.id == request.branch_id).first():
             raise SolicitudInvalidaException(detail="La sucursal seleccionada no existe")
         if request.date_from and request.date_to and request.date_from > request.date_to:
             raise SolicitudInvalidaException(detail="La fecha inicial debe ser anterior o igual a la fecha final")
+        if (request.date_from or request.date_to) and request.report_type in ('inventory_by_branch','products_detail','products_by_category','products_by_season','products_by_supplier','low_stock'):
+            raise SolicitudInvalidaException(detail='El inventario muestra existencias actuales; no hay un corte histórico de stock para esas fechas. Consulta ventas o pagos del periodo.')
         handlers = {
+            "products_detail": cls._products_detail,
+            "payments_detail": cls._payments_detail,
+            "wallet_topups": cls._wallet_topups,
             "inventory_by_branch": cls._inventory_by_branch,
             "products_by_category": cls._products_by_category,
             "products_by_season": cls._products_by_season,
@@ -74,6 +70,8 @@ class ReporteService:
                 detail=f"Tipo de reporte no válido. Opciones: {', '.join(handlers)}"
             )
         columns, rows, summary = handler(db, request)
+        from app.servicios.reporte_plan_service import shape
+        columns,rows,summary=shape(request,columns,rows,summary)
         scope = db.query(Sucursal).filter(Sucursal.id == request.branch_id).first() if request.branch_id else None
         summary["scope"] = scope.name if scope else "Todas las sucursales"
         return ReporteResponse(
@@ -224,6 +222,11 @@ class ReporteService:
             query = query.filter(Usuario.id == request._customer_id)
         if request.branch_id and not request._customer_id:
             query = query.filter(Usuario.id.in_(db.query(Reserva.customer_id).filter(Reserva.branch_id == request.branch_id)))
+        if request.search:
+            from sqlalchemy import or_
+            query=query.filter(or_(Usuario.full_name.ilike('%'+request.search+'%'),Usuario.email.ilike('%'+request.search+'%')))
+        if request.date_from:query=query.filter(Usuario.created_at>=datetime.combine(request.date_from,time.min))
+        if request.date_to:query=query.filter(Usuario.created_at<datetime.combine(request.date_to+timedelta(days=1),time.min))
         customers = query.order_by(Usuario.created_at.desc()).all()
         rows = [{"customer": customer.full_name, "email": customer.email, "registered_at": customer.created_at} for customer in customers]
         return ["customer", "email", "registered_at"], rows, {"customers": len(rows)}
@@ -279,3 +282,84 @@ class ReporteService:
             summary[f"leader_{currency}"] = currency_rows[0]["branch"]
             summary[f"total_{currency}"] = float(sum((Decimal(str(row["amount"])) for row in currency_rows), Decimal("0")))
         return ["branch", "currency", "sales", "units", "amount"], rows, summary
+
+
+    @staticmethod
+    def _payments_detail(db, request):
+        from app.servicios.historial_service import history
+        if request._customer_id:
+            from types import SimpleNamespace
+            rows=history(db,SimpleNamespace(id=request._customer_id))
+            rows=[r for r in rows if r['tenant_id']==db.info.get('tenant_id') and r['source']!='wallet_topup']
+            if request.branch_id:
+                branch=db.query(Sucursal).filter(Sucursal.id==request.branch_id).first()
+                rows=[r for r in rows if r['branch_name']==branch.name]
+        else:
+            query=db.query(Pago)
+            if request.branch_id:query=query.filter(Pago.branch_id==request.branch_id)
+            rows=[dict(payment_code=p.payment_code,amount=float(p.amount),currency=p.currency,status=p.status,
+                payment_type=p.payment_type,paid_at=p.paid_at,created_at=p.created_at) for p in query.all()]
+            linked=db.query(Pago.reservation_id).filter(Pago.reservation_id.isnot(None))
+            reservations=db.query(Reserva).filter(Reserva.payment_status=='PAID',~Reserva.id.in_(linked))
+            if request.branch_id:reservations=reservations.filter(Reserva.branch_id==request.branch_id)
+            rows += [dict(payment_code=r.reservation_code,amount=float(r.total_amount),
+                currency='USD' if r.payment_method=='WALLET' else settings.PAYPAL_CURRENCY,status='PAID',
+                payment_type=r.payment_method,paid_at=r.paid_at,created_at=r.created_at) for r in reservations.all()]
+        rows=ReporteService._filter_transactions(rows,request)
+        columns=['payment_code','amount','currency','status','payment_type','paid_at']
+        rows=[{k:(float(r[k]) if k=='amount' else str(r[k]) if k=='paid_at' and r.get(k) else r.get(k)) for k in columns} for r in rows]
+        return columns,rows,{'records':len(rows)}
+
+    @staticmethod
+    def _filter_transactions(rows,request):
+        result=[]
+        for r in rows:
+            stamp=r.get('paid_at') or r.get('created_at')
+            stamp=stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp
+            date=stamp.astimezone(timezone(timedelta(hours=-4))).date()
+            if request.date_from and date < request.date_from:continue
+            if request.date_to and date > request.date_to:continue
+            if request.status and r['status']!=request.status:continue
+            if request.payment_method and r.get('payment_type')!=request.payment_method:continue
+            if request.search and request.search.casefold() not in str(r).casefold():continue
+            result.append(r)
+        return result
+
+    @staticmethod
+    def _wallet_topups(db,request):
+        from app.modelos.wallet import RecargaWallet
+        from fastapi import HTTPException
+        if not request._customer_id and request.branch_id:
+            raise HTTPException(422,'Las recargas pertenecen a la empresa. Selecciona todas las sucursales.')
+        query=db.query(RecargaWallet)
+        if request._customer_id:query=query.filter(RecargaWallet.customer_id==request._customer_id)
+        rows=[dict(payment_code='WAL-'+t.id.upper(),amount=t.amount,currency='USD',status=t.status,
+            paid_at=t.paid_at,created_at=t.created_at) for t in query.all()]
+        rows=ReporteService._filter_transactions(rows,request)
+        columns=['payment_code','amount','currency','status','paid_at']
+        return columns,[{k:(str(r[k]) if k=='paid_at' and r.get(k) else r.get(k)) for k in columns} for r in rows],{'records':len(rows)}
+
+
+    @classmethod
+    def _products_detail(cls,db,request):
+        import unicodedata
+        def normalized(value):
+            return ''.join(c for c in unicodedata.normalize('NFD',value.casefold()) if unicodedata.category(c)!='Mn')
+        source=request.model_copy(update={'search':None})
+        rows=[]
+        for p in cls._active_products(db,source):
+            for v in p.variants:
+                if not v.is_active:continue
+                if request.color and normalized(request.color)!=normalized(v.color.name):continue
+                if request.size and normalized(request.size) not in (normalized(v.size.name),normalized(v.size.code)):continue
+                price=float(v.price_override if v.price_override is not None else p.price)
+                if request.min_price is not None and price<request.min_price:continue
+                if request.max_price is not None and price>request.max_price:continue
+                for stock in v.stocks:
+                    if request.branch_id and stock.branch_id!=request.branch_id:continue
+                    row=dict(product=p.name,sku=v.sku,color=v.color.name,size=v.size.name,price=price,
+                        units=stock.quantity,branch=stock.branch.name,category=p.category.name if p.category else '',
+                        season=p.season.name if p.season else '')
+                    if request.search and request.search.casefold() not in str(row).casefold():continue
+                    rows.append(row)
+        return ['product','sku','color','size','price','units','branch','category','season'],rows,{'records':len(rows)}

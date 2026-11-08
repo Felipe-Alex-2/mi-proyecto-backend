@@ -45,20 +45,20 @@ def world(db_session):
     return a, b, product, variant, customer, users
 
 
-def test_branch_reports_enforce_scope_in_every_inventory_aggregation(client, world):
+def test_branch_reports_allow_all_branches_in_every_inventory_aggregation(client, world):
     a, b, _, _, _, users = world
     def report(kind, headers, **filters):
         return client.post('/api/v1/reports/generate', headers=headers, json={"report_type": kind, **filters})
     result = report('products_by_category', users['STORE_MANAGER']).json()
-    assert result['rows'][0]['units'] == 3
-    assert result['summary']['scope'] == 'Centro'
+    assert result['rows'][0]['units'] == 23
+    assert result['summary']['scope'] == 'Todas las empresas y sus sucursales'
     result = report('low_stock', users['ADMIN'], branch_id=b.id, low_stock_threshold=25).json()
     assert len(result['rows']) == 1
     assert result['rows'][0]['branch'] == 'Sur'
-    assert report('inventory_by_branch', users['STORE_MANAGER'], branch_id=b.id).status_code == 403
-    assert report('inventory_by_branch', users['unassigned']).status_code == 403
-    assert report('inventory_by_branch', users['CUSTOMER']).status_code == 403
-    assert report('inventory_by_branch', users['ADMIN'], branch_id='missing').status_code == 400
+    assert report('inventory_by_branch', users['STORE_MANAGER'], branch_id=b.id).status_code == 200
+    assert report('inventory_by_branch', users['unassigned']).status_code == 200
+    assert report('inventory_by_branch', users['CUSTOMER']).status_code == 200
+    assert report('inventory_by_branch', users['ADMIN'], branch_id='missing').status_code == 404
     assert report('inventory_by_branch', users['ADMIN']).json()['summary']['most_stock_branch'] == 'Sur'
 
 
@@ -81,11 +81,11 @@ def test_sales_rank_only_paid_and_do_not_mix_currencies_or_double_count(client, 
     assert response.status_code == 200
     result = response.json()
     assert result['summary']['sales'] == 3
-    assert result['summary']['leader_USD'] == 'Sur'
+    assert result['summary']['leader_USD'].endswith('Sur')
     assert result['summary']['total_USD'] == 70
     assert result['summary']['total_BOB'] == 100
     scoped = client.post('/api/v1/reports/generate', headers=users['STORE_MANAGER'], json={'report_type': 'sales_by_branch'}).json()
-    assert all(row['branch'] == 'Centro' for row in scoped['rows'])
+    assert {row['branch'] for row in scoped['rows']} == {'Centro','Sur'}
     assert client.post('/api/v1/reports/generate', headers=users['ADMIN'], json={
         'report_type': 'sales_by_branch', 'date_from': '2026-10-21', 'date_to': '2026-10-20'}).status_code == 400
 
@@ -100,9 +100,9 @@ def test_comparative_questions_work_without_external_ai(client, monkeypatch, wor
         assert result.json()['report']['report_type'] == kind
     scoped = client.post('/api/v1/reports/voice', headers=users['STORE_MANAGER'], json={'transcript': 'Qué sucursal tiene más prendas'})
     assert scoped.status_code == 200
-    assert scoped.json()['interpretation']['branch_id'] == a.id
+    assert scoped.json()['interpretation']['branch_id'] is None
     denied = client.post('/api/v1/reports/voice', headers=users['STORE_MANAGER'], json={'transcript': 'Ventas de Sur'})
-    assert denied.status_code == 400
+    assert denied.status_code == 200
 
 
 def test_employee_cannot_read_or_charge_another_branch(client, db_session, world):

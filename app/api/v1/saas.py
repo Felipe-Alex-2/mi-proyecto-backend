@@ -304,16 +304,8 @@ def delete_subscription_payment(payment_id: str, user: Usuario = Depends(require
 def customer_history(user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     if user.role != 'CUSTOMER':
         raise HTTPException(403, 'Esta vista es el historial personal del cliente.')
-    payments = db.query(Pago).filter(Pago.customer_id == user.id).order_by(Pago.created_at.desc()).limit(200).all()
-    names = {t.id: t.name for t in db.query(Empresa).all()}
-    from app.servicios.venta_mayor_service import stored_summary
-    import json
-    return [dict(**stored_summary(json.loads(p.items_detail or '[]'), p.amount), id=p.id, payment_code=p.payment_code, tenant_id=p.tenant_id,
-                 exchange_code=(p.reservation.reservation_code if p.reservation else p.payment_code) if p.status == 'PAID' and (p.items_detail or p.reservation_id) else None,
-                 company_name=names.get(p.tenant_id, ''), branch_name=p.branch.name if p.branch else '',
-                 amount=p.amount, currency=p.currency, status=p.status, paid_at=p.paid_at,
-                 concept=p.concept, payment_type=p.payment_type, reference=p.reference, items_detail=p.items_detail,
-                 created_at=p.created_at) for p in payments]
+    from app.servicios.historial_service import history
+    return history(db, user)
 
 
 @router.get('/history/{payment_id}/invoice')
@@ -322,10 +314,13 @@ def customer_invoice(payment_id: str, user: Usuario = Depends(get_current_user),
     from app.servicios.factura_service import FacturaService
     if user.role != 'CUSTOMER':
         raise HTTPException(403, 'Esta vista es el historial personal del cliente.')
-    payment = db.query(Pago).filter(Pago.id == payment_id, Pago.customer_id == user.id).first()
-    if not payment:
+    from app.servicios.historial_service import history, receipt_pdf
+    row = next((r for r in history(db,user) if r['id'] == payment_id), None)
+    if not row:
         raise HTTPException(404, 'Comprobante no encontrado.')
-    if payment.status != 'PAID':
-        raise HTTPException(409, 'El comprobante de compra estará disponible cuando el pago se confirme.')
-    return Response(content=FacturaService.generate_invoice_pdf(payment), media_type='application/pdf',
-        headers={'Content-Disposition':f'attachment; filename="comprobante_{payment.payment_code}.pdf"', 'Cache-Control':'no-store'})
+    if row['status'] != 'PAID':
+        raise HTTPException(409, 'El comprobante estará disponible al confirmar el pago.')
+    payment=db.query(Pago).filter(Pago.id==payment_id,Pago.customer_id==user.id).first() if row['source']=='payment' else None
+    content=FacturaService.generate_invoice_pdf(payment) if payment else receipt_pdf(row)
+    return Response(content=content, media_type='application/pdf',
+        headers={'Content-Disposition':'attachment; filename="comprobante-vesta.pdf"','Cache-Control':'no-store'})
