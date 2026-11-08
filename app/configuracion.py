@@ -54,6 +54,12 @@ class Configuracion(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "FashionStore"
 
+    # Road-distance delivery quotes. Use a configured provider; never invent a route.
+    GOOGLE_MAPS_API_KEY: str = ""
+    DELIVERY_OSRM_URL: str = ""
+    DELIVERY_BOB_PER_USD: float = 6.96
+    DELIVERY_PREPARATION_MINUTES: int = 15
+
     # PayPal Sandbox
     PAYPAL_CLIENT_ID: str = ""
     PAYPAL_CLIENT_SECRET: str = ""

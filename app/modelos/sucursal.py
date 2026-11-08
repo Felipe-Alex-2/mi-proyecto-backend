@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, String, UniqueConstraint, Numeric
 from sqlalchemy.orm import relationship
 from app.base_datos import Base
 from app.modelos.saas import PerteneceEmpresa
@@ -13,6 +13,9 @@ class Sucursal(PerteneceEmpresa, Base):
     name = Column(String(100), nullable=False)
     city = Column(String(100), nullable=False, index=True)
     address = Column(String(255), nullable=False)
+    maps_url = Column(String(2048),nullable=True)
+    latitude = Column(Numeric(10,7),nullable=True)
+    longitude = Column(Numeric(10,7),nullable=True)
     phone = Column(String(50), nullable=True)
     opening_hours = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)

@@ -26,6 +26,8 @@ os.environ["FIREBASE_CREDENTIALS_JSON"] = ""
 os.environ["FIREBASE_CLIENT_EMAIL"] = ""
 os.environ["FIREBASE_PRIVATE_KEY"] = ""
 os.environ["VTON_URL"] = ""
+os.environ["GOOGLE_MAPS_API_KEY"] = ""
+os.environ["DELIVERY_OSRM_URL"] = ""
 
 from app.base_datos import Base, get_db
 from app.main import app

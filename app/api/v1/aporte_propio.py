@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.base_datos import get_db
 from app.api.dependencias import get_current_user, require_roles
 from app.modelos.usuario import RolUsuario
-from app.esquemas.aporte_propio import CambioCreate, TrasladoCreate, Solicitud, CanjePuntos, CotizacionCupon, RetirarCaja, AplicarBeneficio, EntregaCreate, EntregaEstado
+from app.esquemas.aporte_propio import CambioCreate, TrasladoCreate, Solicitud, CanjePuntos, CotizacionCupon, RetirarCaja, AplicarBeneficio, EntregaCreate, EntregaEstado, DeliveryQuoteRequest
 from app.servicios import aporte_propio_service as service
 
 router = APIRouter(prefix='/own', tags=['Aporte Propio CU19–CU23'])
@@ -78,6 +78,12 @@ def redeem(data: CanjePuntos, user=Depends(customer), db: Session=Depends(get_db
 @router.post('/loyalty/apply')
 def apply(data: AplicarBeneficio, user=Depends(staff), db: Session=Depends(get_db)):
     return service.apply_reward(db, user, data)
+
+
+@router.post('/deliveries/quote')
+def quote_delivery(data: DeliveryQuoteRequest, user=Depends(customer),db:Session=Depends(get_db)):
+    from app.servicios.delivery_service import quote
+    return quote(db,user,data)
 
 
 @router.get('/deliveries')

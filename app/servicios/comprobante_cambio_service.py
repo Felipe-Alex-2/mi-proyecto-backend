@@ -27,7 +27,7 @@ def freeze_quote(reservation):
 
 def reservation_items(db, reservation, payments):
     from app.servicios.aporte_propio_service import money, fail
-    total = money(payments[0].amount if payments else reservation.total_amount or 0)
+    total = money(payments[0].amount if payments else reservation.total_amount or 0) - money(reservation.delivery_fee or 0)
     def checked(items):
         if not items or sum((money(item['subtotal']) for item in items), Decimal('0')) != total:
             fail('El detalle del comprobante no coincide con el importe pagado. Revisa el recibo original antes de cambiar prendas.', 409)
@@ -43,7 +43,7 @@ def reservation_items(db, reservation, payments):
         MovimientoInventario.branch_id == reservation.branch_id,
         MovimientoInventario.type == 'EXIT', MovimientoInventario.payment_status == 'PAID',
     ).all()
-    total = money(payments[0].amount if payments else reservation.total_amount or 0)
+    total = money(payments[0].amount if payments else reservation.total_amount or 0) - money(reservation.delivery_fee or 0)
     items = []
     for item in sorted(reservation.items, key=lambda line: line.id):
         movement = next((m for m in movements if m.variant_id == item.variant_id and m.quantity == item.quantity and m.amount is not None), None)

@@ -72,3 +72,5 @@ from app.modelos.reporte_guardado import ReporteGuardado
 from app.modelos.push import DispositivoPush, EnvioPush
 from app.servicios.push_service import install_events
 install_events()
+
+from app.modelos.delivery import CotizacionDelivery,PedidoDelivery

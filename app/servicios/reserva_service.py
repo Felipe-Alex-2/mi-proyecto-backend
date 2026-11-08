@@ -99,8 +99,11 @@ class ReservaService:
             )
 
         from app.servicios.venta_mayor_service import stored_summary
-        breakdown = stored_summary(list(frozen.values()), r.total_amount if r.total_amount is not None else total_estimated)
+        breakdown = stored_summary(list(frozen.values()), (float(r.total_amount)-float(r.delivery_fee or 0)) if r.total_amount is not None else total_estimated)
+        from app.servicios.delivery_service import for_reservation
+        delivery = for_reservation(session,r) if session else None
         resp = ReservaResponse(
+            delivery=delivery,delivery_fee=float(r.delivery_fee or 0),fulfillment='DELIVERY' if delivery else 'PICKUP',
             **breakdown,
             tenant_id=r.tenant_id,
             company_name=r.company.name if r.company else None,
@@ -255,10 +258,13 @@ class ReservaService:
         db.flush()
         from app.servicios.comprobante_cambio_service import freeze_quote
         freeze_quote(reservation)
+        from app.servicios.delivery_service import attach, payment_confirmed
+        attach(db,customer,reservation,data)
 
         if data.payment_method == 'WALLET':
             from app.servicios.wallet_service import pay_reservation
             pay_reservation(db, customer, reservation, data)
+            payment_confirmed(db,reservation)
 
         # Auto-remove reserved variants from customer's cart
         if variant_ids_in_reservation:
@@ -470,6 +476,8 @@ class ReservaService:
             r.status = EstadoReserva.CONFIRMED.value
             r.paypal_capture_id = capture_id
             r.paid_at = datetime.now(timezone.utc)
+            from app.servicios.delivery_service import payment_confirmed
+            payment_confirmed(db,r)
 
             # Auto-register EXIT movement in inventory for confirmed and paid reservation
             for item in r.items:
@@ -587,6 +595,10 @@ class ReservaService:
                 raise AccesoDenegadoException(detail="Solo puedes gestionar reservas de tu sucursal asignada")
 
         target_status = data.status.value if hasattr(data.status, "value") else str(data.status)
+        from app.modelos.delivery import PedidoDelivery
+        delivery = db.query(PedidoDelivery).filter(PedidoDelivery.reservation_id==r.id).first()
+        if delivery and r.payment_status=='PAID' and delivery.status not in ('REJECTED','DELIVERED') and target_status in ('COMPLETED','CANCELLED','EXPIRED'):
+            raise SolicitudInvalidaException(detail='Gestiona esta compra desde Delivery: confirma la entrega o rechaza el envío para habilitar el retiro.')
         notes = data.staff_notes.strip() if data.staff_notes else ""
 
         if target_status in (EstadoReserva.COMPLETED.value, EstadoReserva.CANCELLED.value):

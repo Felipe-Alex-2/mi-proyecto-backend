@@ -156,7 +156,10 @@ def pay_reservation(db,user,reservation,data):
 
 def checkout_hash(data):
     import hashlib
-    return hashlib.sha256(data.model_dump_json().encode()).hexdigest()
+    delivery_fields={'fulfillment','delivery_quote_id','delivery_recipient','delivery_phone','delivery_address'}
+    plain_pickup=getattr(data,'fulfillment','PICKUP')=='PICKUP' and not any(getattr(data,k,None) for k in delivery_fields-{'fulfillment'})
+    # Keep the hash of existing pickup purchases stable across this schema extension.
+    return hashlib.sha256(data.model_dump_json(exclude=delivery_fields if plain_pickup else set()).encode()).hexdigest()
 
 
 def checkout_retry(db,user,data):

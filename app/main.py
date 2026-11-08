@@ -50,6 +50,8 @@ async def lifespan(app: FastAPI):
         ensure_loyalty_schema(engine)
         from app.nucleo.esquema_bitacora import ensure_activity_scope_schema
         ensure_activity_scope_schema(engine)
+        from app.nucleo.esquema_delivery import ensure_delivery_schema
+        ensure_delivery_schema(engine)
         with engine.connect() as conn:
             _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'CUSTOMER' NOT NULL;")
             _execute_startup_sql(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_id VARCHAR(16) DEFAULT 'terracotta' NOT NULL;")

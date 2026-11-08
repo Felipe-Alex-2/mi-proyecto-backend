@@ -55,7 +55,7 @@ class EntregaCreate(Solicitud):
 
 class EntregaEstado(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
-    status: Literal['PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED', 'FAILED', 'CANCELLED']
+    status: Literal['PREPARING', 'ACCEPTED', 'REJECTED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'FAILED', 'CANCELLED']
     courier: str = Field(default='', max_length=150)
     note: str = Field(default='', max_length=500)
 
@@ -75,3 +75,8 @@ class RetirarCaja(BaseModel):
     code: str = Field(min_length=1, max_length=30)
     branch_id: str
     variant_id: str
+
+
+class DeliveryQuoteRequest(BaseModel):
+    branch_id: str = Field(min_length=1,max_length=36)
+    destination_maps_url: str = Field(min_length=10,max_length=2048)

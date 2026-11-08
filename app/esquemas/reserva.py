@@ -10,6 +10,11 @@ class ReservaItemCreate(BaseModel):
 
 
 class ReservaCreate(BaseModel):
+    fulfillment: Literal['PICKUP','DELIVERY'] = 'PICKUP'
+    delivery_quote_id: str | None = Field(None,max_length=36)
+    delivery_recipient: str | None = Field(None,max_length=150)
+    delivery_phone: str | None = Field(None,max_length=50)
+    delivery_address: str | None = Field(None,max_length=500)
     request_id: str | None = Field(None, min_length=36, max_length=36)
     coupon_code: str | None = Field(None, max_length=30)
     branch_id: str = Field(..., description="Sucursal donde se realizará la prueba")
@@ -44,6 +49,9 @@ class ReservaItemResponse(BaseModel):
 
 
 class ReservaResponse(BaseModel):
+    delivery: dict | None = None
+    delivery_fee: float = 0
+    fulfillment: str = 'PICKUP'
     coupon_discount_amount: float = 0
     coupon_discount_percent: int = 0
     tenant_id: Optional[str] = None

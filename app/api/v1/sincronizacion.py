@@ -101,9 +101,27 @@ def dispatch(db, user, command):
         request = CapturaPayPalRequest.model_validate(body)
         return ReservaService.capture_paypal_order(db, user, request.paypal_order_id)
     if path == "/reservations" and method == "POST":
-        # An offline PayPal intent reserves stock, but does not charge money.
+        # Cash and wallet intents settle atomically with their synchronization receipt.
+        if body.get('fulfillment')=='DELIVERY':
+            raise HTTPException(422,'El delivery requiere conexión para validar la ruta y el pago.')
         data = ReservaCreate.model_validate(body)
-        return ReservaService.create_reservation(db, user, data)
+        if data.payment_method=='WALLET':
+            from decimal import Decimal,InvalidOperation
+            try:
+                expected=Decimal(str(body.get('_wallet_expected_total')))
+                if not expected.is_finite() or expected<=0 or expected>Decimal('9999999999.99') or expected.as_tuple().exponent < -2:raise InvalidOperation()
+            except (InvalidOperation,ValueError,TypeError):
+                raise HTTPException(422,'El pago pendiente de wallet necesita un importe válido.')
+            data=data.model_copy(update={'request_id':data.request_id or str(command.operation_id)})
+        result=ReservaService.create_reservation(db, user, data)
+        if data.payment_method=='WALLET':
+            from decimal import Decimal
+            from app.servicios.wallet_service import view
+            expected=body.get('_wallet_expected_total')
+            if expected is None or Decimal(str(expected)).quantize(Decimal('.01'))!=Decimal(str(result.total_amount)).quantize(Decimal('.01')):
+                raise HTTPException(409,'El precio de la compra cambió. Revisa el pago pendiente de wallet antes de reintentar.')
+            return dict(result.model_dump(mode='json'),wallet_balance=float(view(db,user)['balance']))
+        return result
     if path.startswith("/reservations/") and method == "DELETE":
         return ReservaService.cancel_by_customer(db, path.split("/")[-1], user)
     if path == "/cart/items" and method == "POST":
@@ -122,6 +140,18 @@ def dispatch(db, user, command):
         if method == "PUT":
             return CarritoService.update_item_quantity(db, user.id, item.id, CarritoItemUpdate.model_validate(body))
         return CarritoService.remove_item(db, user.id, item.id)
+    if method=='POST' and path in ('/own/exchanges','/own/loyalty/redeem','/own/loyalty/apply','/own/loyalty/claim'):
+        from app.servicios.administracion_sin_conexion_service import require_role
+        from app.api.v1 import aporte_propio as own
+        from app.esquemas.aporte_propio import CambioCreate,CanjePuntos,AplicarBeneficio,RetirarCaja
+        require_role(user,('CUSTOMER',) if path.endswith('/redeem') else ('ADMIN','STORE_MANAGER','CASHIER'))
+        schema,handler={
+            '/own/exchanges':(CambioCreate,own.exchange),
+            '/own/loyalty/redeem':(CanjePuntos,own.redeem),
+            '/own/loyalty/apply':(AplicarBeneficio,own.apply),
+            '/own/loyalty/claim':(RetirarCaja,own.claim_box),
+        }[path]
+        return handler(schema.model_validate(body),user,db)
     from app.servicios.administracion_sin_conexion_service import dispatch_admin
     return dispatch_admin(db, user, command)
 

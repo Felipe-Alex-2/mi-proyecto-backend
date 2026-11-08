@@ -43,6 +43,7 @@ class Reserva(PerteneceEmpresa, Base):
     paypal_order_id = Column(String(100), nullable=True, index=True)
     paypal_capture_id = Column(String(100), nullable=True)
     paid_at = Column(DateTime, nullable=True)
+    delivery_fee = Column(Numeric(10, 2), nullable=False, default=0)
     total_amount = Column(Numeric(10, 2), nullable=True)
     receipt_items_detail = Column(Text, nullable=True)
 

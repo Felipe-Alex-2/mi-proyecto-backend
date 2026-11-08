@@ -1,3 +1,4 @@
+from app.nucleo.transacciones import commit_or_flush
 """Company scoped points and single-use rewards, reserved atomically at checkout."""
 import json
 import secrets
@@ -61,7 +62,7 @@ def redeem(db, user, data):
     db.add(MovimientoPuntos(tenant_id=attrs['tenant_id'], customer_id=user.id,
         source_key='redeem:' + row.id, points=-option['points'], description='Canje: ' + option['name']))
     s.audit(db, user, 'REGISTRO_CANJE_PUNTOS', f"Beneficio {row.id}: {option['name']}, {option['points']} puntos")
-    db.commit()
+    commit_or_flush(db)
     return s.serialize(row)
 
 
@@ -155,7 +156,7 @@ def apply_reward(db, user, data):
     items, total, savings = discount(json.loads(p.items_detail), reward, p.currency)
     p.amount, p.items_detail = total, json.dumps(items)
     bind(reward, payment=p, savings=savings)
-    db.commit()
+    commit_or_flush(db)
     return dict(status=reward.status, discount_amount=reward.discount_amount)
 
 
@@ -182,7 +183,7 @@ def claim(db, user, data):
     reward.status, reward.fulfilled_branch_id, reward.fulfilled_variant_id = 'CLAIMED', data.branch_id, data.variant_id
     reward.fulfilled_by, reward.fulfilled_at = user.id, s.now()
     s.audit(db, user, 'ENTREGA_CAJA_MISTERIOSA', f'Beneficio {reward.id}; prenda {data.variant_id}', data.branch_id)
-    db.commit()
+    commit_or_flush(db)
     return dict(status='CLAIMED')
 
 

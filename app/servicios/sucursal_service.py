@@ -71,6 +71,10 @@ class SucursalService:
             opening_hours=obj_in.opening_hours.strip() if obj_in.opening_hours else None,
             is_active=True,
         )
+        if obj_in.maps_url:
+            from app.servicios.mapas_service import resolve
+            db_obj.latitude,db_obj.longitude=resolve(obj_in.maps_url)
+            db_obj.maps_url=obj_in.maps_url.strip()
         db.add(db_obj)
         commit_or_flush(db)
         db.refresh(db_obj)
@@ -110,6 +114,13 @@ class SucursalService:
         if obj_in.is_active is not None:
             db_obj.is_active = obj_in.is_active
 
+        if 'maps_url' in obj_in.model_fields_set:
+            if obj_in.maps_url:
+                from app.servicios.mapas_service import resolve
+                db_obj.latitude,db_obj.longitude=resolve(obj_in.maps_url)
+                db_obj.maps_url=obj_in.maps_url.strip()
+            else:
+                db_obj.maps_url=db_obj.latitude=db_obj.longitude=None
         db.add(db_obj)
         commit_or_flush(db)
         db.refresh(db_obj)

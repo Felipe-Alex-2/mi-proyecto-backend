@@ -10,6 +10,7 @@ class SucursalBase(BaseModel):
     address: str = Field(..., min_length=5, max_length=255)
     phone: Optional[str] = Field(None, max_length=50)
     opening_hours: Optional[str] = Field(None, max_length=100)
+    maps_url: Optional[str] = Field(None,max_length=2048)
 
     @field_validator("name")
     @classmethod
@@ -47,6 +48,7 @@ class SucursalUpdate(BaseModel):
     address: Optional[str] = Field(None, min_length=5, max_length=255)
     phone: Optional[str] = Field(None, max_length=50)
     opening_hours: Optional[str] = Field(None, max_length=100)
+    maps_url: Optional[str] = Field(None,max_length=2048)
     is_active: Optional[bool] = None
 
     @field_validator("name")
@@ -97,6 +99,8 @@ class SucursalResponse(SucursalBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    latitude: float | None = None
+    longitude: float | None = None
     staff_count: int = 0
     manager: Optional[PersonalSucursal] = None
     cashiers: List[PersonalSucursal] = []

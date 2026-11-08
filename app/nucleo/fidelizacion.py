@@ -54,7 +54,7 @@ def install_loyalty_events():
                     payment = db.query(Pago).execution_options(skip_tenant=True).filter(
                         Pago.reservation_id == obj.id, Pago.tenant_id == tenant_id).first()
                 currency = payment.currency if payment else 'USD'
-                amount = payment.amount if payment else obj.total_amount
+                amount = Decimal(str(payment.amount if payment else obj.total_amount or 0))-Decimal(str(obj.delivery_fee or 0))
                 source = 'reservation:' + obj.id
             else:
                 currency, amount = obj.currency, obj.amount

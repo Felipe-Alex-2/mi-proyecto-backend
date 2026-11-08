@@ -170,7 +170,7 @@ class FacturaService:
 
         # --- INFO META SECTION ---
         cashier_name = esc(payment.cashier.full_name if (payment.cashier and getattr(payment.cashier, 'full_name', None)) else (payment.cashier.email if payment.cashier else "Caja de Sucursal"))
-        pay_method_label = "PayPal Sandbox (Online)" if payment.payment_type == "PAYPAL" else "Efectivo (Caja Física)"
+        pay_method_label = "PayPal Sandbox (Online)" if payment.payment_type == "PAYPAL" else "Wallet" if payment.payment_type == "WALLET" else "Efectivo (Caja Física)"
 
         info_data = [
             [
@@ -297,7 +297,8 @@ class FacturaService:
         # --- TOTALS SUMMARY TABLE ---
         total_float = float(payment.amount)
         from app.servicios.venta_mayor_service import stored_summary
-        bulk = stored_summary(json.loads(payment.items_detail or '[]'), payment.amount)
+        shipping = getattr(payment.reservation, 'delivery_fee', 0) or 0
+        bulk = stored_summary(json.loads(payment.items_detail or '[]'), payment.amount-shipping)
         subtotal_float = float(bulk['subtotal_before_wholesale'])
         iva_float = 0.00
 
@@ -309,6 +310,9 @@ class FacturaService:
                 Paragraph(f"<font size=12 color='#1A365D'><b>${total_float:.2f} {currency}</b></font>", cell_right),
             ],
         ]
+        if shipping:
+            totals_data.insert(-1, [Paragraph('<b>Delivery - envio:</b>', cell_right),
+                                    Paragraph(f'${float(shipping):.2f} {currency}', cell_right)])
         if bulk['wholesale_discount_percent']:
             totals_data.insert(1, [Paragraph(f"<b>Venta por mayor (-{bulk['wholesale_discount_percent']}%):</b>", cell_right),
                                    Paragraph(f"-${float(bulk['wholesale_discount_amount']):.2f} {currency}", cell_right)])

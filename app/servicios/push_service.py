@@ -74,7 +74,7 @@ def send_to_device(token,data,tag):
     from firebase_admin import messaging
     # Keep sensitive purchase/account details out of the OS lock-screen tray.
     message=messaging.Message(fid=token,data=data,notification=messaging.Notification(
-        title='VESTA',body='Tienes una nueva notificación. Abre la app para verla.'),
+        title='Tu delivery salió' if data.get('kind')=='DELIVERY_OUT_FOR_DELIVERY' else 'VESTA',body='Tu pedido está en camino. Consulta Reservas para ver el seguimiento.' if data.get('kind')=='DELIVERY_OUT_FOR_DELIVERY' else 'Tienes una nueva notificación. Abre la app para verla.'),
         android=messaging.AndroidConfig(priority='high',ttl=timedelta(hours=24),notification=messaging.AndroidNotification(
             channel_id='vesta_notifications',tag=tag,icon='ic_notification',color='#A34F3D',default_sound=True)))
     return messaging.send(message,app=firebase_app())

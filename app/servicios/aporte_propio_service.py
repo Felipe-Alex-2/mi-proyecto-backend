@@ -1,3 +1,4 @@
+from app.nucleo.transacciones import commit_or_flush
 """CU19–CU23. Server prices, company scopes and atomic commercial documents."""
 import hashlib
 import json
@@ -183,7 +184,7 @@ def exchange(db, user, data):
                          original_unit_price=paid, new_unit_price=new_price, difference=difference)
     db.add(result)
     audit(db, user, 'REGISTRO_CAMBIO_PRENDA', f'Cambio {result.id} de {p.payment_code}; diferencia {difference} {p.currency}', p.branch_id)
-    db.commit()
+    commit_or_flush(db)
     return serialize(result)
 
 
@@ -212,7 +213,7 @@ def send_transfer(db, user, data):
                              status='SENT', items_json=json.dumps(details), notes=data.notes)
     db.add(row)
     audit(db, user, 'REGISTRO_ENVIO_TRASLADO', f'Traslado {row.id} hacia {data.destination_id}', data.origin_id)
-    db.commit()
+    commit_or_flush(db)
     return serialize(row)
 
 
@@ -230,7 +231,7 @@ def receive_transfer(db, user, transfer_id):
         move(db, user, rows, row.destination_id, item['variant_id'], item['quantity'], row.id, 'Recepción de traslado entre sucursales')
     row.status, row.received_by, row.received_at = 'RECEIVED', user.id, now()
     audit(db, user, 'REGISTRO_RECEPCION_TRASLADO', f'Recepción completa de traslado {row.id}', row.destination_id)
-    db.commit()
+    commit_or_flush(db)
     return serialize(row)
 
 
@@ -286,7 +287,7 @@ def delivery_create(db, user, data):
                           dict(status='PENDING', at=now().isoformat(), note='Solicitud creada; envío pendiente de pago.')]))
     db.add(row)
     audit(db, user, 'REGISTRO_SOLICITUD_DELIVERY', f'Entrega {row.id}; tarifa Bs {fee}; cobro {shipping.payment_code}', p.branch_id)
-    db.commit()
+    commit_or_flush(db)
     return delivery_view(db, row)
 
 
@@ -299,6 +300,7 @@ def delivery_view(db, row):
 
 
 def deliveries(db, user):
+    from app.servicios.delivery_service import list_orders
     query = db.query(EntregaDomicilio)
     if user.role == 'CUSTOMER':
         query = query.filter(EntregaDomicilio.customer_id == user.id)
@@ -306,10 +308,13 @@ def deliveries(db, user):
         scope = resolve_branch(user)
         if scope:
             query = query.filter(EntregaDomicilio.branch_id == scope)
-    return [delivery_view(db, row) for row in query.order_by(EntregaDomicilio.created_at.desc()).limit(100)]
+    return list_orders(db,user) + [delivery_view(db, row) for row in query.order_by(EntregaDomicilio.created_at.desc()).limit(100)]
 
 
 def delivery_status(db, user, delivery_id, data):
+    from app.servicios.delivery_service import change_status
+    result=change_status(db,user,delivery_id,data)
+    if result is not None:return result
     row = db.query(EntregaDomicilio).filter(EntregaDomicilio.id == delivery_id).with_for_update().populate_existing().first()
     if not row:
         fail('Entrega no encontrada.', 404)
@@ -335,5 +340,5 @@ def delivery_status(db, user, delivery_id, data):
     history.append(dict(status=row.status, at=now().isoformat(), note=data.note, courier=courier))
     row.history_json = json.dumps(history)
     audit(db, user, 'ACTUALIZAR_ESTADO_DELIVERY', f'Entrega {row.id}: {row.status}. {data.note}', row.branch_id)
-    db.commit()
+    commit_or_flush(db)
     return delivery_view(db, row)

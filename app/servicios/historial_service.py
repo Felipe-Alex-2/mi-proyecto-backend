@@ -14,7 +14,8 @@ def history(db, user):
     rows = []
     linked = {p.reservation_id for p in payments if p.reservation_id}
     for p in payments:
-        rows.append(dict(**stored_summary(json.loads(p.items_detail or '[]'), p.amount),
+        shipping = (p.reservation.delivery_fee or 0) if p.reservation else 0
+        rows.append(dict(**stored_summary(json.loads(p.items_detail or '[]'), p.amount-shipping), delivery_fee=shipping,
             id=p.id, source='payment', payment_code=p.payment_code, tenant_id=p.tenant_id,
             exchange_code=(p.reservation.reservation_code if p.reservation else p.payment_code)
                 if p.status == 'PAID' and (p.items_detail or p.reservation_id) else None,
@@ -24,7 +25,7 @@ def history(db, user):
             items_detail=p.items_detail, created_at=p.created_at))
     for r in db.query(Reserva).filter(Reserva.customer_id == user.id, Reserva.payment_status == 'PAID').all():
         if r.id in linked: continue
-        rows.append(dict(**stored_summary(json.loads(r.receipt_items_detail or '[]'), r.total_amount),
+        rows.append(dict(**stored_summary(json.loads(r.receipt_items_detail or '[]'), (r.total_amount or 0)-(r.delivery_fee or 0)), delivery_fee=r.delivery_fee or 0,
             id='reservation:'+r.id, source='reservation', payment_code=r.reservation_code,
             exchange_code=r.reservation_code, tenant_id=r.tenant_id, company_name=names.get(r.tenant_id,''),
             branch_name=r.branch.name if r.branch else '', amount=r.total_amount, currency='USD' if r.payment_method=='WALLET' else settings.PAYPAL_CURRENCY,
@@ -48,6 +49,8 @@ def receipt_pdf(row):
                for item in json.loads(row.get('items_detail') or '[]')]
     if not details:
         details=[dict(concept=row['concept'],quantity=1,amount=str(row['amount']),currency=row['currency'])]
+    elif row.get('delivery_fee'):
+        details.append(dict(concept='Delivery - envio por recorrido',quantity=1,amount=str(row['delivery_fee']),currency=row['currency']))
     summary={k:str(row[k] or '') for k in ('company_name','branch_name','payment_code','paid_at',
         'payment_type','reference','amount','currency','status')}
     if row.get('exchange_code'): summary['exchange_code']=row['exchange_code']; summary['exchange_limit']='48 horas desde el pago'
