@@ -148,7 +148,7 @@ La frase del usuario es: {transcript}
     def generate(cls, db: Session, transcript: str, user: Usuario, branch_id: str | None = None, all_companies: bool = True) -> tuple[ReporteRequest, ReporteResponse]:
         from app.modelos.saas import Empresa, ROOT_TENANT_ID
         phrase=cls._normalize(transcript)
-        companies=db.query(Empresa).filter(Empresa.id!=ROOT_TENANT_ID).all()
+        companies=db.query(Empresa).all()
         named=[c for c in companies if re.search(r'(?<!\w)'+re.escape(cls._normalize(c.name))+r'(?!\w)',phrase)]
         branches=db.query(Sucursal).execution_options(skip_tenant=True).filter(Sucursal.is_active==True).all()
         interpretation=cls.interpret(transcript,branches)

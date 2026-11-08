@@ -16,7 +16,7 @@ report_reader = require_roles(RolUsuario.ADMIN, RolUsuario.STORE_MANAGER, RolUsu
 def report_branches(db:Session=Depends(get_db),current_user:Usuario=Depends(report_reader)):
     from app.modelos.saas import Empresa,ROOT_TENANT_ID
     from app.modelos.sucursal import Sucursal
-    names={c.id:c.name for c in db.query(Empresa).filter(Empresa.id!=ROOT_TENANT_ID).all()}
+    names={c.id:c.name for c in db.query(Empresa).all()}
     return [dict(id=b.id,name=b.name,city=b.city,tenant_id=b.tenant_id,company_name=names[b.tenant_id])
         for b in db.query(Sucursal).execution_options(skip_tenant=True).filter(Sucursal.is_active==True).order_by(Sucursal.name).all() if b.tenant_id in names]
 

@@ -1,11 +1,11 @@
-from app.modelos.saas import Empresa, ROOT_TENANT_ID
+from app.modelos.saas import Empresa
 from app.modelos.sucursal import Sucursal
 from app.esquemas.reporte import ReporteResponse
 
 
 def directory(db, request, user):
-    # Same public directory used by the store selector; never expose billing or users.
-    companies=db.query(Empresa).filter(Empresa.id != ROOT_TENANT_ID, Empresa.is_active == True).order_by(Empresa.name).all()
+    # VESTA is both the root tenant and a business; include it even with zero branches.
+    companies=db.query(Empresa).filter(Empresa.is_active == True).order_by(Empresa.name).all()
     branches=db.query(Sucursal).execution_options(skip_tenant=True).filter(Sucursal.is_active == True).order_by(Sucursal.name).all()
     names={c.id:c.name for c in companies}
     if request.report_type == 'companies_list':

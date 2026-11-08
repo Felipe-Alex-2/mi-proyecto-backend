@@ -84,8 +84,8 @@ def test_customer_directory_and_own_payments_work_without_gemini(client,db_sessi
         assert response.status_code==200,response.text
         report=response.json()['report'];assert report['report_type']==kind
         if kind=='companies_list':
-            assert report['summary']['companies']==2
-            assert {r['company'] for r in report['rows']}=={'moda-a','moda-b'}
+            assert report['summary']['companies']==3
+            assert {r['company'] for r in report['rows']}=={'VESTA','moda-a','moda-b'}
         if kind=='payments_detail':assert len(report['rows'])==1 and report['rows'][0]['amount']==70
     forbidden=client.post('/api/v1/reports/voice',headers=auth,json={'transcript':'Qué empresa vende más'})
     assert forbidden.status_code==200

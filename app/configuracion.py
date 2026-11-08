@@ -43,6 +43,10 @@ class Configuracion(BaseSettings):
     FIREBASE_CLIENT_EMAIL: str = ''
     FIREBASE_PRIVATE_KEY: str = ''
 
+    # Report email over HTTPS (Railway Free/Trial/Hobby).
+    RESEND_API_KEY: str = ""
+    REPORT_EMAIL_FROM: str = ""
+
     # SMTP (Gmail)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

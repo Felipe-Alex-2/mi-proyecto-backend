@@ -23,7 +23,7 @@ def test_every_role_can_report_foreign_company_download_and_email(client,db_sess
     response=client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_company'})
     assert response.status_code==200,response.text
     report=response.json()
-    assert report['summary']['companies']==2 and report['summary']['total_USD']==240
+    assert report['summary']['companies']==3 and report['summary']['total_USD']==240
     assert report['platform_only'] is False
     branches=client.get('/api/v1/reports/branches',headers=auth)
     assert branches.status_code==200 and shop['foreign'] in {b['id'] for b in branches.json()}

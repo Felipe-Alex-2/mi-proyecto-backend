@@ -1,5 +1,6 @@
 """Persist an authorized report snapshot, speak its actual figures and mail its PDF."""
-import io,json,logging,smtplib
+import io,json,logging,smtplib,base64
+import httpx
 from datetime import datetime,timezone
 from email.message import EmailMessage
 from xml.sax.saxutils import escape
@@ -70,6 +71,20 @@ def pdf(report):
 
 
 def send_report_email(recipient,report):
+    if settings.RESEND_API_KEY:
+        if not settings.REPORT_EMAIL_FROM:return False
+        attachment=pdf(report)
+        try:
+            result=httpx.post('https://api.resend.com/emails',
+                headers={'Authorization':'Bearer '+settings.RESEND_API_KEY},
+                json={'from':settings.REPORT_EMAIL_FROM,'to':[recipient],'subject':'VESTA · '+report.title,
+                    'text':'Adjuntamos el reporte solicitado en PDF.\n\n'+report.title,
+                    'attachments':[{'filename':'reporte-vesta.pdf','content':base64.b64encode(attachment).decode()}]},timeout=15)
+            result.raise_for_status()
+            return bool(result.json().get('id'))
+        except (httpx.HTTPError,ValueError):
+            logging.getLogger(__name__).warning('El proveedor HTTPS no aceptó el correo del reporte.')
+            return False
     if not settings.SMTP_USER or not settings.SMTP_PASSWORD:return False
     msg=EmailMessage();msg['Subject']='VESTA · '+report.title;msg['From']=settings.SMTP_USER;msg['To']=recipient
     msg.set_content('Adjuntamos el reporte solicitado en PDF.\n\n'+report.title)
@@ -86,6 +101,7 @@ def send_report_email(recipient,report):
 
 def deliver(db,row,recipient):
     report=ReporteResponse.model_validate_json(row.result_json)
+    report.report_id=row.id
     if row.email_status=='SENT' and row.email_to==recipient:return response(row)
     row.email_to=recipient
     row.email_status='SENT' if send_report_email(recipient,report) else 'FAILED'
@@ -96,7 +112,7 @@ def deliver(db,row,recipient):
 def response(row):
     report=ReporteResponse.model_validate_json(row.result_json)
     report.report_id=row.id;report.email_status=row.email_status
-    report.email_message={'SENT':'PDF enviado a '+str(row.email_to),'FAILED':'El reporte se generó, pero no se pudo enviar el PDF. Revisa la configuración SMTP o reintenta.','NOT_REQUESTED':''}.get(row.email_status,'')
+    report.email_message={'SENT':'PDF enviado a '+str(row.email_to),'FAILED':'No se pudo enviar el PDF. Reintenta o revisa la configuración de correo del backend (Resend por HTTPS en Railway Free/Trial/Hobby).' ,'NOT_REQUESTED':''}.get(row.email_status,'')
     return report
 
 

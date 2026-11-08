@@ -3,7 +3,6 @@ from collections import defaultdict
 from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 from app.modelos.saas import Empresa, ROOT_TENANT_ID
 from app.esquemas.reporte import ReporteResponse
 
@@ -12,7 +11,7 @@ def generate_global(db,request,user):
     if not user:raise HTTPException(401,'Inicia sesión para consultar reportes.')
     from app.servicios.reporte_service import ReporteService
     from app.modelos.sucursal import Sucursal
-    companies=db.query(Empresa).execution_options(skip_tenant=True).filter(or_(Empresa.id!=ROOT_TENANT_ID,Empresa.id.in_(db.query(Sucursal.tenant_id)))).order_by(Empresa.name).all()
+    companies=db.query(Empresa).execution_options(skip_tenant=True).order_by(Empresa.name).all()
     # Older installations may still have commercial rows in the original tenant.
     if not companies and db.query(Sucursal).execution_options(skip_tenant=True).filter(Sucursal.tenant_id==ROOT_TENANT_ID).first():
         from types import SimpleNamespace
