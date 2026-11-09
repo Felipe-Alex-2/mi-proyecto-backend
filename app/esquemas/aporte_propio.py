@@ -58,6 +58,7 @@ class EntregaEstado(BaseModel):
     status: Literal['PREPARING', 'ACCEPTED', 'REJECTED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'FAILED', 'CANCELLED']
     courier: str = Field(default='', max_length=150)
     note: str = Field(default='', max_length=500)
+    confirm_fee_collected: bool = False
 
 
 class CanjePuntos(Solicitud):

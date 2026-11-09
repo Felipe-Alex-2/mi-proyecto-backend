@@ -12,6 +12,7 @@ class ReservaItemCreate(BaseModel):
 class ReservaCreate(BaseModel):
     fulfillment: Literal['PICKUP','DELIVERY'] = 'PICKUP'
     delivery_quote_id: str | None = Field(None,max_length=36)
+    delivery_maps_url: str | None = Field(None,max_length=2048)
     delivery_recipient: str | None = Field(None,max_length=150)
     delivery_phone: str | None = Field(None,max_length=50)
     delivery_address: str | None = Field(None,max_length=500)

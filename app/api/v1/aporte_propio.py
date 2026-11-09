@@ -101,6 +101,12 @@ def update_delivery(delivery_id: str, data: EntregaEstado, user=Depends(staff), 
     return service.delivery_status(db, user, delivery_id, data)
 
 
+@router.post('/deliveries/{delivery_id}/calculate')
+def calculate_delivery(delivery_id:str,user=Depends(staff),db:Session=Depends(get_db)):
+    from app.servicios.delivery_service import retry_calculation
+    return retry_calculation(db,user,delivery_id)
+
+
 @router.get('/loyalty/ranking')
 def ranking(user=Depends(staff), db: Session=Depends(get_db)):
     from app.servicios.puntos_service import leaderboard

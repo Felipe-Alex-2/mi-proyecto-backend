@@ -30,7 +30,10 @@ class PedidoDelivery(PerteneceEmpresa,Base):
     __tablename__='delivery_orders'
     id=Column(String(36),primary_key=True,default=lambda:str(uuid.uuid4()))
     reservation_id=Column(String(36),ForeignKey('reservations.id'),nullable=False,unique=True)
-    quote_id=Column(String(36),ForeignKey('delivery_quotes.id'),nullable=False,unique=True)
+    quote_id=Column(String(36),ForeignKey('delivery_quotes.id'),nullable=True,unique=True)
+    destination_maps_url=Column(String(2048),nullable=True)
+    route_error=Column(Text,nullable=True)
+    shipping_payment_id=Column(String(36),ForeignKey('payments.id'),nullable=True)
     customer_id=Column(String(36),ForeignKey('users.id'),nullable=False,index=True)
     branch_id=Column(String(36),ForeignKey('branches.id'),nullable=False,index=True)
     recipient=Column(String(150),nullable=False)

@@ -60,13 +60,23 @@ def quote(db,user,data):
 
 
 def order_view(db,row):
-    q=db.query(CotizacionDelivery).filter(CotizacionDelivery.id==row.quote_id).first()
+    from app.modelos.pago import Pago
+    q=db.query(CotizacionDelivery).filter(CotizacionDelivery.id==row.quote_id).first() if row.quote_id else None
     r=db.query(Reserva).filter(Reserva.id==row.reservation_id).first()
-    details=quote_view(db,q)
+    branch=db.get(Sucursal,row.branch_id)
+    shipping=db.get(Pago,row.shipping_payment_id) if row.shipping_payment_id else None
+    details=quote_view(db,q) if q else dict(branch_id=row.branch_id,branch_name=branch.name if branch else '',
+        origin_maps_url=branch.maps_url if branch else None,destination_maps_url=row.destination_maps_url,
+        fee_usd=None,fee_bob=None,distance_km=None,estimated_minutes_min=None,estimated_minutes_max=None,
+        currency='USD',directions_url=None)
+    deferred=bool(row.destination_maps_url)
     return dict(details,id=row.id,source='reservation',reservation_id=row.reservation_id,reservation_code=r.reservation_code,
         recipient=row.recipient,phone=row.phone,address=row.address,status=row.status,courier=row.courier,
-        fee=float(q.fee_usd),pickup_available=row.status=='REJECTED',zone='DISTANCE',created_at=row.created_at,departed_at=row.departed_at,
-        estimated_arrival_at=row.estimated_arrival_at,history=json.loads(row.history_json),
+        fee=float(q.fee_usd) if q else None,pickup_available=row.status=='REJECTED',zone='DISTANCE',created_at=row.created_at,departed_at=row.departed_at,
+        estimated_arrival_at=row.estimated_arrival_at,history=json.loads(row.history_json),route_error=row.route_error,
+        fee_collection='CASH_ON_DELIVERY' if deferred else 'PREPAID',fee_pending=q is None,
+        shipping_payment_status=shipping.status if shipping else ('PENDING' if deferred else r.payment_status),
+        shipping_payment_code=shipping.payment_code if shipping else None,
         purchase_payment_status=r.payment_status,purchase_payment_method=r.payment_method)
 
 
@@ -94,7 +104,7 @@ def payment_confirmed(db,reservation):
     row.status='REQUESTED';row.updated_at=utcnow()
     history=json.loads(row.history_json);history.append(dict(status='REQUESTED',at=utcnow().isoformat(),note='Compra pagada. Solicitud pendiente de aceptación.'))
     row.history_json=json.dumps(history)
-    notify(db,row,'DELIVERY_PAYMENT_CONFIRMED','Solicitud de delivery enviada','Tu compra y envío están pagados. La sucursal debe aceptar la entrega.')
+    notify(db,row,'DELIVERY_PAYMENT_CONFIRMED','Solicitud de delivery enviada','Tus prendas están pagadas. La solicitud está a la espera de que la sucursal acepte y aparte tu pedido.')
     notify(db,row,'DELIVERY_REQUESTED','Nuevo delivery por aceptar',f'El pedido {reservation.reservation_code} solicita delivery. Revisa su ruta y acepta o rechaza el envío.',staff=True)
 
 
@@ -104,6 +114,19 @@ def attach(db,user,reservation,data):
         return
     if user.role!='CUSTOMER' or data.payment_method not in ('WALLET','PAYPAL'):
         raise HTTPException(422,'El delivery requiere pago con wallet o PayPal y conexión a Internet.')
+    if not data.delivery_quote_id:
+        link=mapas_service.validate_link(data.delivery_maps_url or '')
+        recipient=(data.delivery_recipient or user.full_name or '').strip()
+        phone=(data.delivery_phone or user.phone or '').strip()
+        address=(data.delivery_address or '').strip()
+        if len(recipient)<2 or len(phone)<7 or len(address)<5:
+            raise HTTPException(422,'Completa nombre, celular y dirección con referencias para el delivery.')
+        db.add(PedidoDelivery(tenant_id=reservation.tenant_id,reservation_id=reservation.id,quote_id=None,
+            destination_maps_url=link,customer_id=user.id,branch_id=reservation.branch_id,
+            recipient=recipient,phone=phone,address=address,status='AWAITING_PAYMENT',
+            history_json=json.dumps([dict(status='AWAITING_PAYMENT',at=utcnow().isoformat(),note='Datos de entrega registrados. Pendiente de pago de las prendas.')])) )
+        db.flush()
+        return
     q=db.query(CotizacionDelivery).filter(CotizacionDelivery.id==data.delivery_quote_id,
         CotizacionDelivery.customer_id==user.id,CotizacionDelivery.branch_id==reservation.branch_id).with_for_update().first()
     if not q:raise HTTPException(404,'Cotiza el envío para esta sucursal y este cliente.')
@@ -149,30 +172,90 @@ def change_status(db,user,id,data):
     if data.status=='OUT_FOR_DELIVERY' and not courier.strip():raise HTTPException(422,'Indica el repartidor antes de confirmar la salida.')
     if data.status=='REJECTED':
         if len(data.note.strip())<5:raise HTTPException(422,'Indica el motivo del rechazo.')
-        # Keep the paid garments for pickup; return the unused delivery fee as wallet credit.
-        from app.servicios.wallet_service import account
-        from app.modelos.wallet import MovimientoWallet
-        customer=db.query(Usuario).filter(Usuario.id==row.customer_id).one()
-        wallet=account(db,customer)
-        q=db.query(CotizacionDelivery).filter(CotizacionDelivery.id==row.quote_id).one()
-        wallet.balance=Decimal(wallet.balance)+q.fee_usd
-        db.add(MovimientoWallet(tenant_id=row.tenant_id,customer_id=row.customer_id,source_key='delivery-refund:'+row.id,
-            amount=q.fee_usd,description='Envío rechazado: devolución a wallet '+reservation.reservation_code))
+        # Only historical prepaid deliveries have an unused fee to refund.
+        if not row.destination_maps_url:
+            from app.servicios.wallet_service import account
+            from app.modelos.wallet import MovimientoWallet
+            customer=db.query(Usuario).filter(Usuario.id==row.customer_id).one()
+            wallet=account(db,customer)
+            q=db.query(CotizacionDelivery).filter(CotizacionDelivery.id==row.quote_id).one()
+            wallet.balance=Decimal(wallet.balance)+q.fee_usd
+            db.add(MovimientoWallet(tenant_id=row.tenant_id,customer_id=row.customer_id,source_key='delivery-refund:'+row.id,
+                amount=q.fee_usd,description='Envío rechazado: devolución a wallet '+reservation.reservation_code))
     if data.status=='OUT_FOR_DELIVERY':
-        q=db.query(CotizacionDelivery).filter(CotizacionDelivery.id==row.quote_id).one()
-        row.departed_at=utcnow();row.estimated_arrival_at=utcnow()+timedelta(seconds=q.duration_seconds)
+        if row.destination_maps_url and not row.quote_id:
+            try:
+                calculate_dispatch(db,row)
+                row.route_error=None
+            except HTTPException as error:
+                row.route_error=str(error.detail)
+        q=db.query(CotizacionDelivery).filter(CotizacionDelivery.id==row.quote_id).first()
+        row.departed_at=utcnow();row.estimated_arrival_at=utcnow()+timedelta(seconds=q.duration_seconds) if q else None
     if data.status=='DELIVERED':
+        if row.shipping_payment_id:
+            from app.modelos.pago import Pago
+            shipping=db.query(Pago).filter(Pago.id==row.shipping_payment_id).with_for_update(of=Pago).one()
+            if shipping.status!='PAID':
+                if not data.confirm_fee_collected:raise HTTPException(422,'Confirma que recibiste en efectivo el importe del envío.')
+                shipping.status='PAID';shipping.paid_at=utcnow();shipping.cashier_id=user.id
         reservation.status='COMPLETED';reservation.updated_at=utcnow();reservation.staff_user_id=user.id
         reservation.staff_notes='Entrega de delivery confirmada.'
     row.status=data.status;row.courier=courier;row.updated_at=utcnow()
     history=json.loads(row.history_json);history.append(dict(status=row.status,at=utcnow().isoformat(),note=data.note,courier=courier));row.history_json=json.dumps(history)
-    messages={'ACCEPTED':('Delivery aceptado','La sucursal está preparando tu pedido.'),
+    messages={'ACCEPTED':('Pedido aceptado y apartado','La sucursal aceptó y apartó tus prendas. Te avisaremos cuando salga la moto con el pedido.'),
         'REJECTED':('Pedido disponible para recoger','El delivery fue rechazado. Tus prendas siguen pagadas para recoger y el envío se devolvió a tu wallet. '+data.note),
-        'OUT_FOR_DELIVERY':('Tu delivery salió','Tu pedido está en camino. Revisa el seguimiento en Reservas.'),
+        'OUT_FOR_DELIVERY':('Tu delivery salió','La moto salió con tu pedido. Revisa el seguimiento en Reservas.'),
         'DELIVERED':('Delivery entregado','La sucursal confirmó la entrega de tu pedido.'),
         'FAILED':('No se pudo entregar','Revisa Reservas y comunícate con la sucursal. '+data.note)}
-    title,message=messages[data.status];notify(db,row,'DELIVERY_'+data.status,title,message)
+    title,message=messages[data.status]
+    if data.status=='REJECTED' and row.destination_maps_url:
+        message='La sucursal rechazó el delivery. Tus prendas siguen pagadas para recoger en sucursal. '+data.note
+    notify(db,row,'DELIVERY_'+data.status,title,message)
     from app.servicios.aporte_propio_service import audit
     audit(db,user,'ACTUALIZAR_ESTADO_DELIVERY',f'Pedido {row.id}: {row.status}. {data.note}',row.branch_id)
+    commit_or_flush(db)
+    return order_view(db,row)
+
+
+def calculate_dispatch(db,row):
+    """Best-effort server calculation at departure; merchandise payment is unchanged."""
+    from app.modelos.pago import Pago
+    import uuid
+    branch=db.get(Sucursal,row.branch_id)
+    if not branch or not branch.maps_url or branch.latitude is None or branch.longitude is None:
+        raise HTTPException(409,'La sucursal debe configurar su ubicación para calcular el envío.')
+    point=mapas_service.resolve(row.destination_maps_url)
+    distance,duration,provider=mapas_service.route((float(branch.latitude),float(branch.longitude)),point)
+    rate=Decimal(str(settings.DELIVERY_BOB_PER_USD))
+    if not rate.is_finite() or rate<=0:raise HTTPException(503,'Configura el tipo de cambio del envío.')
+    bob=(Decimal(distance)*4/1000).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
+    usd=(bob/rate).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
+    if max(bob,usd)>Decimal('99999999.99'):raise HTTPException(422,'El recorrido supera el importe admitido.')
+    q=CotizacionDelivery(tenant_id=row.tenant_id,customer_id=row.customer_id,branch_id=row.branch_id,
+        origin_maps_url=branch.maps_url,destination_maps_url=row.destination_maps_url,origin_lat=branch.latitude,
+        origin_lon=branch.longitude,destination_lat=point[0],destination_lon=point[1],distance_meters=distance,
+        duration_seconds=duration,fee_bob=bob,fee_usd=usd,bob_per_usd=rate,provider=provider,expires_at=utcnow())
+    db.add(q);db.flush();row.quote_id=q.id
+    if usd>0:
+        customer=db.get(Usuario,row.customer_id)
+        shipping=Pago(id=str(uuid.uuid4()),tenant_id=row.tenant_id,payment_code='ENV-'+uuid.uuid4().hex[:12].upper(),
+            branch_id=row.branch_id,customer_id=row.customer_id,customer_name=customer.full_name,
+            customer_email=customer.email,concept='Delivery a cobrar en efectivo al recibir',amount=usd,
+            currency='USD',payment_type='EFECTIVO',status='PENDING',reference='DELIVERY:'+row.id,items_detail='[]')
+        db.add(shipping);db.flush();row.shipping_payment_id=shipping.id
+
+
+def retry_calculation(db,user,id):
+    row=db.query(PedidoDelivery).filter(PedidoDelivery.id==id).with_for_update().first()
+    if not row:raise HTTPException(404,'Pedido no encontrado.')
+    resolve_branch(user,row.branch_id)
+    if row.status not in ('OUT_FOR_DELIVERY','FAILED') or not row.destination_maps_url:
+        raise HTTPException(409,'El cálculo corresponde a un pedido que ya salió a reparto.')
+    if row.quote_id:return order_view(db,row)
+    calculate_dispatch(db,row);row.route_error=None;row.updated_at=utcnow()
+    quote=db.get(CotizacionDelivery,row.quote_id)
+    row.estimated_arrival_at=aware(row.departed_at)+timedelta(seconds=quote.duration_seconds) if row.departed_at else None
+    from app.servicios.aporte_propio_service import audit
+    audit(db,user,'ACTUALIZAR_CALCULO_DELIVERY',f'Cálculo de envío para {row.id}. Cobro en efectivo al recibir.',row.branch_id)
     commit_or_flush(db)
     return order_view(db,row)
