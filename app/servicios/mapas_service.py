@@ -1,7 +1,7 @@
 """Google Maps links and road routing; API credentials stay on the server."""
 import math
 import re
-from urllib.parse import urlparse,parse_qs,urljoin,unquote
+from urllib.parse import urlparse,parse_qs,urljoin,unquote,unquote_plus
 import httpx
 from fastapi import HTTPException
 from app.configuracion import settings
@@ -30,6 +30,11 @@ def coordinates(link):
         for field in ('query','q','destination','ll'):
             match=re.fullmatch(pair,query.get(field,[''])[0])
             if match:break
+    if not match:
+        # Shared mobile pins can redirect to /maps/search/LAT,+LON rather
+        # than placing coordinates in q= or @LAT,LON.
+        path=unquote_plus(urlparse(link).path)
+        match=re.search(r'/maps/(?:search|place)/'+pair+r'(?:/|$)',path)
     if not match:match=re.search('@'+pair,text)
     if not match:return None
     lat,lon=map(float,match.groups())

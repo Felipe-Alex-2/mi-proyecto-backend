@@ -70,3 +70,6 @@ api_v1_router.include_router(wallet_router)
 
 from app.api.v1.push import router as push_router
 api_v1_router.include_router(push_router)
+
+from app.api.v1.tiempo_real import router as realtime_router
+api_v1_router.include_router(realtime_router)

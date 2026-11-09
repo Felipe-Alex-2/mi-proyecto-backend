@@ -15,6 +15,8 @@ from app.servicios.saas_service import utcnow
 
 ORIGIN='https://www.google.com/maps?q=-17.78,-63.18'
 DEST='https://www.google.com/maps?q=-17.80,-63.20'
+SHARED_PIN='https://maps.app.goo.gl/cXzSxikcRGXvG7cU8'
+SHARED_TARGET='https://www.google.com/maps/search/-17.757663,+-63.178484?entry=tts'
 
 
 def quote(client,shop,monkeypatch):
@@ -127,6 +129,60 @@ def test_maps_pin_coordinates_precede_viewport_and_no_fake_route(monkeypatch):
     monkeypatch.setattr(settings,'GOOGLE_MAPS_API_KEY','');monkeypatch.setattr(settings,'DELIVERY_OSRM_URL','')
     with pytest.raises(HTTPException) as e:mapas_service.route((-17.8,-63.2),(-17.9,-63.1))
     assert e.value.status_code==503
+
+
+@pytest.mark.parametrize('link',[
+    SHARED_TARGET,
+    'https://www.google.com/maps/search/-17.757663,%20-63.178484/',
+    'https://www.google.com/maps/search/-17.757663%2C%20-63.178484',
+    'https://www.google.com/maps/place/-17.757663,+-63.178484/',
+])
+def test_shared_pin_coordinates_in_path(link):
+    assert mapas_service.coordinates(link)==(-17.757663,-63.178484)
+
+
+def test_shared_pin_can_be_saved_as_branch_origin_and_quoted_as_destination(client,db_session,shop,monkeypatch):
+    import httpx
+    original=httpx.Client
+    calls=[]
+    def handle(request):
+        calls.append(str(request.url))
+        assert request.url.host=='maps.app.goo.gl'
+        return httpx.Response(302,headers={'location':SHARED_TARGET})
+    monkeypatch.setattr(httpx,'Client',lambda **kwargs:original(transport=httpx.MockTransport(handle),**kwargs))
+    seen=[]
+    monkeypatch.setattr(mapas_service,'route',lambda a,b:seen.append((a,b)) or (2500,600,'TEST_ROADS'))
+    saved=client.put('/api/v1/branches/'+shop['origin'],headers=headers(shop['admin']),json={'maps_url':SHARED_PIN})
+    assert saved.status_code==200,saved.text
+    assert saved.json()['maps_url']==SHARED_PIN
+    assert saved.json()['latitude']==-17.757663 and saved.json()['longitude']==-63.178484
+    reloaded=client.get('/api/v1/branches/'+shop['origin'],headers=headers(shop['admin']))
+    assert reloaded.status_code==200,reloaded.text
+    assert reloaded.json()['maps_url']==SHARED_PIN
+    listed=client.get('/api/v1/branches',headers=headers(shop['admin']))
+    branch=next(row for row in listed.json() if row['id']==shop['origin'])
+    assert branch['maps_url']==SHARED_PIN and branch['latitude']==-17.757663
+    changed=client.put('/api/v1/branches/'+shop['origin'],headers=headers(shop['admin']),json={'address':'Dirección actualizada para el delivery'})
+    assert changed.status_code==200,changed.text
+    assert changed.json()['maps_url']==SHARED_PIN
+    quoted=client.post('/api/v1/own/deliveries/quote',headers=headers(shop['customer']),json={
+        'branch_id':shop['origin'],'destination_maps_url':SHARED_PIN})
+    assert quoted.status_code==200,quoted.text
+    assert seen==[((-17.757663,-63.178484),(-17.757663,-63.178484))]
+    assert quoted.json()['origin_lat']==quoted.json()['destination_lat']==-17.757663
+    assert quoted.json()['fee_usd']==1.44 and len(calls)==2
+    cleared=client.put('/api/v1/branches/'+shop['origin'],headers=headers(shop['admin']),json={'maps_url':''})
+    assert cleared.status_code==200,cleared.text
+    assert all(cleared.json()[field] is None for field in ('maps_url','latitude','longitude'))
+    no_origin=client.post('/api/v1/own/deliveries/quote',headers=headers(shop['customer']),json={
+        'branch_id':shop['origin'],'destination_maps_url':SHARED_PIN})
+    assert no_origin.status_code==409
+
+
+def test_path_coordinates_still_validate_range():
+    with pytest.raises(HTTPException) as error:
+        mapas_service.resolve('https://www.google.com/maps/search/-117.757663,+-63.178484')
+    assert error.value.status_code==422
 
 
 def test_google_routes_uses_road_fields_and_osrm_uses_lon_lat(monkeypatch):

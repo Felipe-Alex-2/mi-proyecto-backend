@@ -189,6 +189,9 @@ class SucursalService:
                 cashiers.append(member)
 
         return SucursalResponse(
+            maps_url=branch.maps_url,
+            latitude=branch.latitude,
+            longitude=branch.longitude,
             id=branch.id,
             name=branch.name,
             city=branch.city,
