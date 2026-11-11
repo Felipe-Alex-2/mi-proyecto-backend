@@ -30,7 +30,9 @@ def test_every_role_can_report_foreign_company_download_and_email(client,db_sess
     foreign=client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','branch_id':shop['foreign']})
     assert foreign.status_code==200 and foreign.json()['summary']['total_USD']==200
     voice=client.post('/api/v1/reports/voice',headers=auth,json={'transcript':'Qué empresa vende más'})
-    assert voice.status_code==200 and voice.json()['report']['summary']['total_USD']==240
+    assert voice.status_code==200
+    assert voice.json()['report']['summary']['total_USD']==200
+    assert voice.json()['report']['summary']['comparison_total_USD']==240
     assert client.get('/api/v1/reports/'+report['report_id']+'/pdf',headers=auth).content.startswith(b'%PDF')
     sent=[]
     monkeypatch.setattr(delivery,'send_report_email',lambda recipient,report:sent.append(recipient) or True)

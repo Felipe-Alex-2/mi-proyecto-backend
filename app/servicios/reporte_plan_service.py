@@ -5,6 +5,16 @@ from app.nucleo.excepciones import SolicitudInvalidaException
 
 
 def shape(request, columns, rows, summary):
+    if request.only_without_sales:
+        if request.report_type not in ('sales_by_branch', 'sales_by_company'):
+            raise SolicitudInvalidaException(detail='El filtro sin ventas requiere un reporte de ventas.')
+        totals=defaultdict(int)
+        def entity(row):return row.get('company_id'),row.get('branch_id',row.get('branch'))
+        for row in rows:totals[entity(row)]+=row['sales']
+        rows=[row for row in rows if totals[entity(row)]==0]
+        summary={k:v for k,v in summary.items() if not k.startswith(('leader_','total_'))}
+        summary.update(sales=0,units=0,records=len(rows))
+        for currency in {r['currency'] for r in rows}:summary['total_'+currency]=0
     if request.aggregations:
         dimensions=list(request.group_by or [])
         if any(c not in columns for c in dimensions):
@@ -45,9 +55,31 @@ def shape(request, columns, rows, summary):
     if request.sort_by:
         if request.sort_by not in columns:raise SolicitudInvalidaException(detail='La columna de orden no pertenece al reporte.')
         rows.sort(key=lambda r:(r.get(request.sort_by) is not None,r.get(request.sort_by) or 0),reverse=request.descending)
+        if 'currency' in columns:
+            rows.sort(key=lambda r: r.get('currency') or '')
     if request.limit:
         summary['matching_records']=summary.get('matching_records',len(rows))
-        rows=rows[:request.limit]
+        if 'currency' in columns:
+            counts=defaultdict(int)
+            limited=[]
+            for row in rows:
+                currency=row.get('currency')
+                if counts[currency] < request.limit:
+                    limited.append(row)
+                    counts[currency]+=1
+            rows=limited
+        else:
+            rows=rows[:request.limit]
+    if request.report_type in {'sales_by_branch', 'sales_by_company'} and request.limit and not request.aggregations:
+        # Keep the comparison universe explicit, but make the main totals
+        # describe the branches actually shown in a top/bottom result.
+        for key in list(summary):
+            if key.startswith('total_') or key in {'sales', 'units'}:
+                summary['comparison_'+key] = summary[key]
+        summary.update(sales=sum(r.get('sales',0) for r in rows),
+                       units=sum(r.get('units',0) for r in rows),records=len(rows))
+        for currency in {r['currency'] for r in rows if 'currency' in r}:
+            summary['total_'+currency] = float(sum((Decimal(str(r['amount'])) for r in rows if r.get('currency')==currency), Decimal(0)))
     if request.selected_columns:
         if any(c not in columns for c in request.selected_columns):raise SolicitudInvalidaException(detail='Las columnas solicitadas no pertenecen al reporte.')
         columns=request.selected_columns

@@ -19,6 +19,10 @@ class ReporteGeminiService:
     def _normalize(value: str) -> str:
         return ''.join(c for c in unicodedata.normalize('NFD', value.lower()) if unicodedata.category(c) != 'Mn')
 
+    @staticmethod
+    def _today():
+        return datetime.now(timezone(timedelta(hours=-4))).date()
+
     @classmethod
     def _basic_branch_report(cls, phrase: str, matches: list) -> str | None:
         """Resolve generic branch requests without guessing a specific metric.
@@ -83,19 +87,16 @@ class ReporteGeminiService:
         elif re.search(r'ropa|prenda|stock|inventario|existencia|producto',phrase):kind='inventory_by_branch' if 'sucursal' in phrase else 'products_detail'
         if kind is None:
             kind = cls._basic_branch_report(phrase, matches)
-        today=datetime.now(timezone(timedelta(hours=-4))).date()
+        today=cls._today()
         filters={}
         # Resolve common calendar periods locally, identically for voice and text.
-        dates=re.findall(r'\b(\d{4}-\d{2}-\d{2})\b',phrase)
-        if dates:
-            filters['date_from']=dates[0];filters['date_to']=dates[-1]
-        elif 'ayer' in phrase:filters.update(date_from=today-timedelta(days=1),date_to=today-timedelta(days=1))
-        elif 'hoy' in phrase:filters.update(date_from=today,date_to=today)
-        elif 'esta semana' in phrase:filters.update(date_from=today-timedelta(days=today.weekday()),date_to=today)
-        elif 'este mes' in phrase:filters.update(date_from=today.replace(day=1),date_to=today)
-        elif 'este ano' in phrase:filters.update(date_from=today.replace(month=1,day=1),date_to=today)
-        elif match:=re.search(r'ultimos? (\d+) dias?',phrase):filters.update(date_from=today-timedelta(days=min(36600,max(1,int(match[1])))-1),date_to=today)
-        unresolved_date=bool(re.search(r'ayer|hoy|semana|mes|ano|desde|hasta|dias|\d{1,2}/\d{1,2}',phrase)) and not dates and 'date_from' not in filters
+        from app.servicios.reporte_periodo_service import resolve_period
+        try:
+            period_filters, period_label = resolve_period(phrase, today)
+        except ValueError as exc:
+            raise SolicitudInvalidaException(detail=str(exc)) from exc
+        filters.update(period_filters)
+        unresolved_date=bool(re.search(r'ayer|hoy|semana|mes|ano|desde|hasta|dias|\d{1,2}/\d{1,2}',phrase)) and not period_filters
         if re.search(r'pagad|cobrad|completad',phrase):filters['status']='PAID'
         elif 'pendiente' in phrase:filters['status']='PENDING'
         elif 'cancelad' in phrase:filters['status']='CANCELLED'
@@ -110,13 +111,31 @@ class ReporteGeminiService:
         if match:=re.search(r'talla\s+([\w]+)',phrase):filters['size']=match[1];kind='products_detail'
         if match:=re.search(r'(?:menos de|menor a|hasta)\s*\$?\s*(\d+(?:[.,]\d+)?)\s*(?:dolares|usd|bs)',phrase):filters['max_price']=float(match[1].replace(',','.'));kind='products_detail'
         if re.search(r'paypal|efectivo|wallet',phrase) and kind=='payments_detail':filters['payment_method']='PAYPAL' if 'paypal' in phrase else 'WALLET' if 'wallet' in phrase else 'EFECTIVO'
+        # Rankings are semantic constraints, not just a generic sales intent.
+        if kind == 'sales_by_branch' and re.search(r'sin ventas|\bno (?:ha[n]? |se )?vend|ninguna venta', phrase):
+            filters['only_without_sales'] = True
+        ranking = {}
+        if kind in ('sales_by_branch', 'inventory_by_branch', 'reservations_by_branch'):
+            low = bool(re.search(r'\b(menos|menor(?:es)?|peor(?:es)?)\b', phrase)) and not re.search(r'menos de\s+\d+', phrase)
+            high = bool(re.search(r'\b(mas|mayor(?:es)?|mejor(?:es)?)\b', phrase)) and not re.search(r'mas de\s+\d+', phrase)
+            if low or high:
+                metric = 'amount' if kind == 'sales_by_branch' else 'units' if kind == 'inventory_by_branch' else 'reservations'
+                if kind == 'sales_by_branch' and re.search(r'\bunidades?\b', phrase): metric = 'units'
+                ranking.update(sort_by=metric, descending=not low)
+                if 'limit' not in filters and re.search(r'\b(?:la|que|cual)\s+(?:es\s+)?(?:la\s+)?(?:sucursal|empresa)\b', phrase): ranking['limit']=1
+                filters.update(ranking)
         # Complex comparisons/groupings go through the typed AI planner instead of
         # silently turning a different question into a generic stock report.
         complex_query=bool(re.search(r'promedio|promedia|mediana|porcentaje|margen|ganancia|compar|devoluci|ordenad|agru|solo las columnas|entre.* y |enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|mes pasado|semana pasada|mas de|mayores a|por color|por talla|por producto|por prenda',phrase))
+        if period_filters and not re.search(r'promedio|promedia|mediana|porcentaje|margen|ganancia|compar|devoluci|ordenad|agru|solo las columnas|entre.* y |enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|mas de|mayores a|por color|por talla|por producto|por prenda', phrase):
+            complex_query = False
+        complex_query = complex_query or bool(re.search(r'(?:productos|prendas)\s+mas\s+vend', phrase))
         if kind and not unresolved_date and not complex_query:
 
             try:
-                return ReporteRequest(report_type=kind,branch_id=matches[0].id if matches else None,**filters)
+                request = ReporteRequest(report_type=kind,branch_id=matches[0].id if matches else None,**filters)
+                request._period_label = period_label
+                return request
             except ValueError as exc:
                 raise SolicitudInvalidaException(detail='Revisa las fechas y los filtros de la consulta.') from exc
         if authorize_ai:authorize_ai()
@@ -137,7 +156,8 @@ products_by_supplier, registered_customers, sales_by_branch, payments_detail, wa
 products_detail: columnas product,sku,color,size,price,units,branch,category,season.
 payments_detail: payment_code,amount,currency,status,payment_type,paid_at.
 sales_by_branch: branch,currency,sales,units,amount.
-Filtros opcionales adicionales: color,size,min_price,max_price,payment_method.
+Filtros opcionales adicionales: color,size,min_price,max_price,payment_method,only_without_sales.
+Para sucursales o empresas sin ninguna venta usa sales_by_branch y only_without_sales true.
 Los reportes de ventas separan monedas; nunca sumes monedas distintas.
 Puedes incluir sort_by, descending, limit, selected_columns para ordenar, limitar y seleccionar columnas.
 Para calcular métricas dinámicas incluye group_by (columnas disponibles) y aggregations:
@@ -148,9 +168,13 @@ Para cantidad y valor por color/talla usa products_detail con group_by color/siz
 No uses sum price para calcular ingresos; price es precio unitario del catálogo.
 La moneda se preserva automáticamente. No se admiten fórmulas, SQL ni atributos no listados.
 Nunca inventes métricas, datos ni SQL. Usa tipos de reporte y filtros existentes únicamente.
-Para ventas cobradas, qué sucursal vendió más o recaudación usa sales_by_branch.
+Para ventas cobradas, qué sucursal vendió más o menos o recaudación usa sales_by_branch.
+Para menos/menores ventas usa sort_by amount y descending false; para más/mayores usa descending true.
+Incluye sucursales con cero ventas al comparar. No inventes cifras: el servidor las calculará.
+Para la sucursal singular con más/menos ventas usa limit 1; separa las monedas.
+No cambies una pregunta sobre productos vendidos por una comparación de sucursales: si no es representable devuelve error.
 Para qué sucursal tiene más ropa usa inventory_by_branch.
-Fechas date_from/date_to en formato YYYY-MM-DD, o null. Hoy es {datetime.now(timezone(timedelta(hours=-4))).date()}.
+Fechas date_from/date_to en formato YYYY-MM-DD, o null. Hoy es {today}.
 Interpreta español natural. Para "stock", "inventario" o "existencias" usa inventory_by_branch.
 Para "poco stock", "stock bajo" o "alertas" usa low_stock.
 Para reservas por estado usa reservations_status y para reservas agrupadas por tienda usa reservations_by_branch.
@@ -165,7 +189,16 @@ La frase del usuario es: {transcript}
                 raise SolicitudInvalidaException(detail=str(data["error"])[:400])
             if data.get("low_stock_threshold") is None:
                 data["low_stock_threshold"] = 5
+            # Keep locally resolved dates/ranking even when the AI handles other details.
+            data.update(period_filters)
+            data.update(ranking)
+            if ranking:
+                data.update(report_type=kind, group_by=None, aggregations=None)
+            for field in ('limit', 'search', 'color', 'size', 'min_price', 'max_price', 'payment_method', 'status'):
+                if field in filters: data[field] = filters[field]
+            if filters.get('only_without_sales'): data['only_without_sales'] = True
             request = ReporteRequest(**data)
+            request._period_label = period_label
             if matches:
                 request.branch_id = matches[0].id
             if request.branch_id and request.branch_id not in {b.id for b in (branches or [])}:

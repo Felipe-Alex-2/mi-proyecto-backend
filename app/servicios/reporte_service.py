@@ -74,11 +74,13 @@ class ReporteService:
         columns,rows,summary=shape(request,columns,rows,summary)
         scope = db.query(Sucursal).filter(Sucursal.id == request.branch_id).first() if request.branch_id else None
         summary["scope"] = scope.name if scope else "Todas las sucursales"
+        from app.servicios.reporte_periodo_service import report_metadata
+        title = report_metadata(request, summary, rows, REPORT_TITLES[request.report_type])
         return ReporteResponse(
             customer_id=request._customer_id,
             branch_id=request.branch_id,
             report_type=request.report_type,
-            title=({'sales_by_branch':'Mis compras por sucursal','reservations_status':'Estado de mis reservas','reservations_by_branch':'Mis reservas por sucursal','registered_customers':'Mi cuenta registrada'}.get(request.report_type,REPORT_TITLES[request.report_type]) if request._customer_id else REPORT_TITLES[request.report_type]),
+            title=({'sales_by_branch':'Mis compras por sucursal','reservations_status':'Estado de mis reservas','reservations_by_branch':'Mis reservas por sucursal','registered_customers':'Mi cuenta registrada'}.get(request.report_type,title) if request._customer_id else title),
             generated_by="manual",
             summary=summary,
             columns=columns,
@@ -187,6 +189,10 @@ class ReporteService:
             query = query.filter(Reserva.customer_id == request._customer_id)
         if request.status:
             query = query.filter(Reserva.status == request.status.upper())
+        from app.servicios.reporte_periodo_service import utc_bounds
+        start, end = utc_bounds(request)
+        if start: query = query.filter(Reserva.created_at >= start)
+        if end: query = query.filter(Reserva.created_at < end)
         return query.order_by(Reserva.created_at.desc()).all()
 
     @classmethod
@@ -225,8 +231,10 @@ class ReporteService:
         if request.search:
             from sqlalchemy import or_
             query=query.filter(or_(Usuario.full_name.ilike('%'+request.search+'%'),Usuario.email.ilike('%'+request.search+'%')))
-        if request.date_from:query=query.filter(Usuario.created_at>=datetime.combine(request.date_from,time.min))
-        if request.date_to:query=query.filter(Usuario.created_at<datetime.combine(request.date_to+timedelta(days=1),time.min))
+        from app.servicios.reporte_periodo_service import utc_bounds
+        start, end = utc_bounds(request)
+        if start: query = query.filter(Usuario.created_at >= start)
+        if end: query = query.filter(Usuario.created_at < end)
         customers = query.order_by(Usuario.created_at.desc()).all()
         rows = [{"customer": customer.full_name, "email": customer.email, "registered_at": customer.created_at} for customer in customers]
         return ["customer", "email", "registered_at"], rows, {"customers": len(rows)}
@@ -272,7 +280,14 @@ class ReporteService:
         for reservation in reservations.all():
             add(reservation.branch_id, 'USD' if reservation.payment_method=='WALLET' else settings.PAYPAL_CURRENCY, reservation.total_amount,
                 sum(item.quantity for item in reservation.items))
-        rows = [{"branch": branches[b].name if b in branches else b, "currency": currency,
+        # Compare against the complete branch universe, including stores with no
+        # paid transactions in the requested period. Never create a fake sale.
+        currencies = {currency for _, currency in grouped} or {settings.PAYPAL_CURRENCY}
+        for branch in branches.values():
+            if branch.is_active and (not request.branch_id or branch.id == request.branch_id):
+                for currency in currencies:
+                    grouped[(branch.id, currency)]
+        rows = [{"branch": branches[b].name if b in branches else b, "branch_id": b, "currency": currency,
                  "sales": value["sales"], "units": value["units"], "amount": float(value["amount"])}
                 for (b, currency), value in grouped.items()]
         rows.sort(key=lambda row: (row["currency"], -row["amount"], row["branch"]))

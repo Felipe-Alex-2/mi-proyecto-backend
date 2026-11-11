@@ -10,6 +10,7 @@ class ReporteAggregation(BaseModel):
 
 class ReporteRequest(BaseModel):
     _customer_id: str | None = PrivateAttr(default=None)
+    _period_label: str | None = PrivateAttr(default=None)
     company_id: str | None = None
     all_companies: bool = True
     email_to: EmailStr | None = None
@@ -33,6 +34,7 @@ class ReporteRequest(BaseModel):
     aggregations: list[ReporteAggregation] | None = Field(None,max_length=8)
     sort_by: str | None = None
     descending: bool = True
+    only_without_sales: bool = False
     limit: int | None = Field(None, ge=1, le=1000)
     selected_columns: list[str] | None = None
 

@@ -134,5 +134,6 @@ def test_cashier_can_generate_voice_export_and_email_global_report(client,db_ses
     assert client.get('/api/v1/reports/'+report.json()['report_id']+'/pdf',headers=auth).status_code==200
     voice=client.post('/api/v1/reports/voice',headers=auth,json={'transcript':'Qué sucursal vende más'})
     assert voice.status_code==200,voice.text
-    assert voice.json()['report']['summary']['total_USD']==230
+    assert voice.json()['report']['summary']['total_USD']==200
+    assert voice.json()['report']['summary']['comparison_total_USD']==230
     assert client.post('/api/v1/reports/generate',headers=auth,json={'report_type':'sales_by_branch','branch_id':shop['destination']}).status_code==200

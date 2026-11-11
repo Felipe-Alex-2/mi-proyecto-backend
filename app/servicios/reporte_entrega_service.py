@@ -13,6 +13,8 @@ LABELS={'company_name':'Empresa','branch_name':'Sucursal','payment_code':'Códig
  'concept':'Concepto','paid_at':'Fecha de pago','payment_type':'Forma de pago','reference':'Referencia',
  'exchange_code':'Código para cambios','exchange_limit':'Plazo de cambio','price':'Precio unitario',
  'size':'Talla','color':'Color','address':'Dirección','matching_records':'Registros encontrados','groups':'Grupos',
+ 'period':'Periodo consultado','ranking_criterion':'Criterio de comparación',
+ 'comparison_sales':'Cobros de todo el ámbito','comparison_units':'Unidades de todo el ámbito','least_stock_branch':'Menor inventario',
  'company':'Empresa','companies':'Empresas','branch':'Sucursal','city':'Ciudad','units':'Unidades','sales':'Cobros realizados',
  'amount':'Importe cobrado','currency':'Moneda','scope':'Ámbito','total_units':'Unidades totales','branches':'Sucursales','records':'Registros',
  'product':'Prenda','products':'Prendas','category':'Categoría','categories':'Categorías','season':'Temporada','seasons':'Temporadas',
@@ -25,6 +27,8 @@ def label(key):
     for prefix,title in [('sum_','Total de '),('avg_','Promedio de '),('count_','Cantidad de '),('distinct_','Valores distintos de '),('min_','Mínimo de '),('max_','Máximo de ')]:
         if key.startswith(prefix):return title+label(key[len(prefix):])
     if key.startswith('leader_'): return 'Mayor venta en '+key[7:]
+    if key.startswith('comparison_total_'): return 'Total de todo el ámbito en '+key[17:]
+    if key.startswith('lowest_'): return 'Menor venta en '+key[7:]
     if key.startswith('total_') and key not in LABELS: return 'Total en '+key[6:]
     return LABELS.get(key,key.replace('_',' '))
 
