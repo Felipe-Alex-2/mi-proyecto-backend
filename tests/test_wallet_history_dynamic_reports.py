@@ -99,7 +99,7 @@ def test_dates_filters_and_safe_ai_plan(monkeypatch):
     request=ReporteGeminiService.interpret('prendas color rojo talla M menos de 30 dolares')
     assert request.color=='rojo' and request.size=='m' and request.max_price==30
     monkeypatch.setattr(settings,'GEMINI_API_KEY','mock')
-    monkeypatch.setattr(GeminiClient,'generate_text',lambda prompt:'{"report_type":"products_detail","sort_by":"price","limit":3,"selected_columns":["product","price"]}')
+    monkeypatch.setattr(GeminiClient,'generate_text',lambda prompt,**kwargs:'{"report_type":"products_detail","sort_by":"price","limit":3,"selected_columns":["product","price"]}')
     request=ReporteGeminiService.interpret('prendas ordenadas por precio')
     assert request.sort_by=='price' and request.limit==3
 

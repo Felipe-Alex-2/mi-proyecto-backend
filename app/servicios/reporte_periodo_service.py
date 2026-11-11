@@ -97,8 +97,12 @@ def utc_bounds(request):
 
 
 def report_metadata(request, summary, rows, title):
+    if request._interpretation_source:
+        summary['interpretation_source']=request._interpretation_source
     if request.report_type in {'sales_by_branch', 'sales_by_company', 'payments_detail', 'wallet_topups',
-                                'registered_customers', 'reservations_by_branch', 'reservations_status'}:
+                                'registered_customers', 'reservations_by_branch', 'reservations_status',
+                                'sales_items','reservations_detail','inventory_movements','deliveries_detail',
+                                'exchanges_detail','loyalty_movements','employees_detail'}:
         summary['period'] = describe_period(request)
     if request.report_type in {'sales_by_branch', 'sales_by_company'}:
         metric = request.sort_by if request.sort_by in {'sales', 'units', 'amount'} else 'amount'

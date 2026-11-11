@@ -35,6 +35,7 @@ class Configuracion(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.6-flash"
     GEMINI_FALLBACK_MODEL: str = "gemini-flash-latest"
+    GEMINI_REPORT_FALLBACK_MODEL: str = "gemini-2.5-flash"
 
     # FCM credentials belong only to the backend environment.
     FIREBASE_PUSH_ENABLED: bool = False

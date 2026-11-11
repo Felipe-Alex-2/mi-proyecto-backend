@@ -67,6 +67,15 @@ class ReporteGeminiService:
 
     @classmethod
     def interpret(cls, transcript: str, branches: list | None = None, authorize_ai=None) -> ReporteRequest:
+        from app.configuracion import settings
+        if settings.GEMINI_API_KEY:
+            if authorize_ai: authorize_ai()
+            from app.servicios.reporte_interprete_service import interpret_dynamic
+            return interpret_dynamic(transcript, branches or [], cls._today(), cls._normalize, cls._parse_json)
+        return cls._interpret_local(transcript, branches, authorize_ai)
+
+    @classmethod
+    def _interpret_local(cls, transcript: str, branches: list | None = None, authorize_ai=None) -> ReporteRequest:
         normalize = cls._normalize
         phrase = normalize(transcript)
         matches = [branch for branch in (branches or []) if re.search(r'(?<!\w)' + re.escape(normalize(branch.name)) + r'(?!\w)', phrase)]
@@ -138,76 +147,7 @@ class ReporteGeminiService:
                 return request
             except ValueError as exc:
                 raise SolicitudInvalidaException(detail='Revisa las fechas y los filtros de la consulta.') from exc
-        if authorize_ai:authorize_ai()
-        from app.configuracion import settings
-        if not settings.GEMINI_API_KEY:
-            raise SolicitudInvalidaException(detail='No pude interpretar esa consulta. Prueba: ventas por sucursal, stock por sucursal, reservas por sucursal, mis pagos o lista las empresas existentes. Para consultas más complejas, el administrador debe habilitar la interpretación avanzada con IA.')
-        prompt = f"""
-Eres un traductor de consultas para reportes empresariales de una tienda de ropa.
-No respondas con explicaciones. Devuelve únicamente JSON válido, sin markdown.
-Si la petición no puede representarse con los tipos y filtros disponibles devuelve {{"error":"No se puede calcular esa métrica con estos reportes; precisa la consulta."}}.
-No reemplaces una métrica solicitada por otra diferente.
-El JSON usa estos campos: report_type, branch_id, category_id,
-season_id, supplier_id, status, search, low_stock_threshold, date_from, date_to.
-Usa null cuando no exista un filtro en la frase.
-report_type debe ser uno de: inventory_by_branch, products_by_category,
-products_by_season, low_stock, reservations_status, reservations_by_branch,
-products_by_supplier, registered_customers, sales_by_branch, payments_detail, wallet_topups, companies_list, branches_list, products_detail.
-products_detail: columnas product,sku,color,size,price,units,branch,category,season.
-payments_detail: payment_code,amount,currency,status,payment_type,paid_at.
-sales_by_branch: branch,currency,sales,units,amount.
-Filtros opcionales adicionales: color,size,min_price,max_price,payment_method,only_without_sales.
-Para sucursales o empresas sin ninguna venta usa sales_by_branch y only_without_sales true.
-Los reportes de ventas separan monedas; nunca sumes monedas distintas.
-Puedes incluir sort_by, descending, limit, selected_columns para ordenar, limitar y seleccionar columnas.
-Para calcular métricas dinámicas incluye group_by (columnas disponibles) y aggregations:
-lista de objetos con operation count/distinct/sum/avg/min/max y field (columna numérica o * solo para count).
-La columna resultante se llama operation_field, por ejemplo sum_amount, avg_price o count_records.
-Para total o promedio de pagos usa payments_detail, group_by payment_type y aggregations sum/avg amount.
-Para cantidad y valor por color/talla usa products_detail con group_by color/size y sum units o avg price.
-No uses sum price para calcular ingresos; price es precio unitario del catálogo.
-La moneda se preserva automáticamente. No se admiten fórmulas, SQL ni atributos no listados.
-Nunca inventes métricas, datos ni SQL. Usa tipos de reporte y filtros existentes únicamente.
-Para ventas cobradas, qué sucursal vendió más o menos o recaudación usa sales_by_branch.
-Para menos/menores ventas usa sort_by amount y descending false; para más/mayores usa descending true.
-Incluye sucursales con cero ventas al comparar. No inventes cifras: el servidor las calculará.
-Para la sucursal singular con más/menos ventas usa limit 1; separa las monedas.
-No cambies una pregunta sobre productos vendidos por una comparación de sucursales: si no es representable devuelve error.
-Para qué sucursal tiene más ropa usa inventory_by_branch.
-Fechas date_from/date_to en formato YYYY-MM-DD, o null. Hoy es {today}.
-Interpreta español natural. Para "stock", "inventario" o "existencias" usa inventory_by_branch.
-Para "poco stock", "stock bajo" o "alertas" usa low_stock.
-Para reservas por estado usa reservations_status y para reservas agrupadas por tienda usa reservations_by_branch.
-Sucursales permitidas (solo puedes usar estos IDs): {json.dumps([{'id': b.id, 'name': b.name} for b in (branches or [])], ensure_ascii=False)}.
-search es únicamente nombre de producto, nunca un nombre de sucursal.
-Si no conoces un ID, usa null; no inventes IDs.
-La frase del usuario es: {transcript}
-"""
-        try:
-            data = cls._parse_json(GeminiClient.generate_text(prompt))
-            if data.get("error"):
-                raise SolicitudInvalidaException(detail=str(data["error"])[:400])
-            if data.get("low_stock_threshold") is None:
-                data["low_stock_threshold"] = 5
-            # Keep locally resolved dates/ranking even when the AI handles other details.
-            data.update(period_filters)
-            data.update(ranking)
-            if ranking:
-                data.update(report_type=kind, group_by=None, aggregations=None)
-            for field in ('limit', 'search', 'color', 'size', 'min_price', 'max_price', 'payment_method', 'status'):
-                if field in filters: data[field] = filters[field]
-            if filters.get('only_without_sales'): data['only_without_sales'] = True
-            request = ReporteRequest(**data)
-            request._period_label = period_label
-            if matches:
-                request.branch_id = matches[0].id
-            if request.branch_id and request.branch_id not in {b.id for b in (branches or [])}:
-                raise SolicitudInvalidaException(detail="No se pudo identificar la sucursal. Selecciónala en el filtro.")
-            return request
-        except SolicitudInvalidaException:
-            raise
-        except Exception as exc:
-            raise SolicitudInvalidaException(detail=f"No se pudo interpretar la consulta con Gemini: {exc}") from exc
+        raise SolicitudInvalidaException(detail='Esta consulta necesita la interpretación con IA. Configura Gemini para combinar libremente los datos, filtros y métricas del sistema.')
 
     @classmethod
     def generate(cls, db: Session, transcript: str, user: Usuario, branch_id: str | None = None, all_companies: bool = True) -> tuple[ReporteRequest, ReporteResponse]:

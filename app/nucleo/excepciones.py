@@ -36,6 +36,11 @@ class SolicitudInvalidaException(HTTPException):
         )
 
 
+class ProveedorIAUnavailableException(HTTPException):
+    def __init__(self, detail: str):
+        super().__init__(status_code=503, detail=detail)
+
+
 class ConflictoException(HTTPException):
     def __init__(self, detail: str = "El recurso ya existe"):
         super().__init__(

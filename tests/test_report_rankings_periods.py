@@ -86,7 +86,7 @@ def test_zero_branch_least_sales_dates_and_real_totals(client,db_session,world,l
 def test_ai_cannot_discard_locally_resolved_period_or_least_ranking(monkeypatch):
     monkeypatch.setattr(settings,'GEMINI_API_KEY','test')
     monkeypatch.setattr(ReporteGeminiService,'_today',staticmethod(lambda:date(2026,11,11)))
-    monkeypatch.setattr(GeminiClient,'generate_text',lambda *_:'{"report_type":"sales_by_branch","date_from":"2000-01-01","date_to":"2000-01-31","sort_by":"amount","descending":true}')
+    monkeypatch.setattr(GeminiClient,'generate_text',lambda *_,**kwargs:'{"report_type":"sales_by_branch","date_from":"2000-01-01","date_to":"2000-01-31","sort_by":"amount","descending":true}')
     request=ReporteGeminiService.interpret('comparar las sucursales con menos ventas de los ultimos tres meses')
     assert request.date_from==date(2026,8,11) and request.date_to==date(2026,11,11)
     assert request.sort_by=='amount' and request.descending is False
@@ -147,5 +147,5 @@ def test_last_month_is_local_and_ranking_projection_retains_accurate_totals(loca
         dict(branch='B',amount=0.2,currency='USD',sales=1,units=1),
         dict(branch='C',amount=1,currency='USD',sales=1,units=1),
     ],{'total_USD':1.3,'sales':3,'units':3})
-    assert rows==[{'branch':'A'},{'branch':'B'}]
+    assert rows==[{'branch':'A','currency':'USD'},{'branch':'B','currency':'USD'}]
     assert summary['total_USD']==0.3 and summary['comparison_total_USD']==1.3

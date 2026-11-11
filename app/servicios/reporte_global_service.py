@@ -26,14 +26,16 @@ def generate_global(db,request,user):
         if not companies:raise HTTPException(404,'Empresa no encontrada.')
     elif not request.all_companies:
         companies=[c for c in companies if c.id==db.info.get('tenant_id')]
-    rows=[]; columns=[]
+    rows=[]; columns=[];quality=defaultdict(int)
     for company in companies:
         # A fresh session preserves the originating request's tenant filters,
         # identity map and loaded relationships. Each child query stays scoped.
         with Session(bind=db.get_bind()) as scoped:
             scoped.info.update(tenant_context=True,tenant_id=company.id)
-            sub=request.model_copy(update={'all_companies':False,'company_id':None,'group_by':None,'aggregations':None,'sort_by':None,'limit':None,'only_without_sales':False,'selected_columns':None,'report_type':'sales_by_branch' if request.report_type=='sales_by_company' else request.report_type})
+            sub=request.model_copy(update={'all_companies':False,'company_id':None,'group_by':None,'aggregations':None,'filters':None,'having':None,'partition_by':None,'sort_by':None,'limit':None,'only_without_sales':False,'selected_columns':None,'report_type':'sales_by_branch' if request.report_type=='sales_by_company' else request.report_type})
             result=ReporteService.generate(scoped,sub,user=None)
+            for key in ('unitemized_sales','unpriced_sales'):
+                if key in result.summary:quality[key]+=result.summary[key]
             columns=result.columns
             for row in result.rows:
                 rows.append(dict(company=company.name,company_id=company.id,**row))
@@ -56,6 +58,7 @@ def generate_global(db,request,user):
         rows=[dict(company_id=key[0],company=key[1],currency=key[2],sales=value['sales'],units=value['units'],amount=float(value['amount'])) for key,value in grouped.items()]
         columns=['currency','sales','units','amount']
     summary={'scope':branch.name if request.branch_id else companies[0].name if request.company_id and companies else 'Todas las empresas y sus sucursales' if request.all_companies else 'Empresa actual', 'companies':len(companies),'records':len(rows)}
+    summary.update(quality)
     if request.report_type=='inventory_by_branch':
         rows.sort(key=lambda r:-r['units'])
         summary.update(total_units=sum(r['units'] for r in rows),most_stock_branch=rows[0]['branch'] if rows else 'Sin existencias')
@@ -72,6 +75,6 @@ def generate_global(db,request,user):
     from app.servicios.reporte_plan_service import shape
     columns,rows,summary=shape(request,['company']+columns,rows,summary)
     from app.servicios.reporte_periodo_service import report_metadata
-    title = report_metadata(request, summary, rows, 'Ventas cobradas por empresa' if request.report_type=='sales_by_company' else result.title if companies else request.report_type)
+    title = report_metadata(request, summary, rows, request.report_title or ('Ventas cobradas por empresa' if request.report_type=='sales_by_company' else result.title if companies else request.report_type))
     return ReporteResponse(platform_only=False,report_type=request.report_type,title=title,
         generated_by='manual',summary=summary,columns=columns,rows=rows)

@@ -8,9 +8,16 @@ class ReporteAggregation(BaseModel):
     field: str = '*'
 
 
+class ReporteFilter(BaseModel):
+    field: str = Field(..., max_length=80)
+    operator: Literal['eq','ne','gt','gte','lt','lte','in','contains','is_null','not_null']
+    value: Any = None
+
+
 class ReporteRequest(BaseModel):
     _customer_id: str | None = PrivateAttr(default=None)
     _period_label: str | None = PrivateAttr(default=None)
+    _interpretation_source: str | None = PrivateAttr(default=None)
     company_id: str | None = None
     all_companies: bool = True
     email_to: EmailStr | None = None
@@ -37,6 +44,10 @@ class ReporteRequest(BaseModel):
     only_without_sales: bool = False
     limit: int | None = Field(None, ge=1, le=1000)
     selected_columns: list[str] | None = None
+    filters: list[ReporteFilter] | None = Field(None,max_length=20)
+    having: list[ReporteFilter] | None = Field(None,max_length=12)
+    partition_by: list[str] | None = Field(None,max_length=6)
+    report_title: str | None = Field(None,max_length=180)
 
 
 class ReporteVozRequest(BaseModel):

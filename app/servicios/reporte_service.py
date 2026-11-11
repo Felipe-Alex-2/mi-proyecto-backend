@@ -32,6 +32,8 @@ REPORT_TITLES = {
     "registered_customers": "Clientes registrados",
     "sales_by_branch": "Ventas cobradas por sucursal",
 }
+from app.servicios.reporte_datos_service import CATALOG, generate_facts
+REPORT_TITLES.update({key:spec['title'] for key,spec in CATALOG.items()})
 
 
 class ReporteService:
@@ -64,7 +66,7 @@ class ReporteService:
             "registered_customers": cls._registered_customers,
             "sales_by_branch": cls._sales_by_branch,
         }
-        handler = handlers.get(request.report_type)
+        handler = generate_facts if request.report_type in CATALOG else handlers.get(request.report_type)
         if not handler:
             raise SolicitudInvalidaException(
                 detail=f"Tipo de reporte no válido. Opciones: {', '.join(handlers)}"
@@ -75,7 +77,7 @@ class ReporteService:
         scope = db.query(Sucursal).filter(Sucursal.id == request.branch_id).first() if request.branch_id else None
         summary["scope"] = scope.name if scope else "Todas las sucursales"
         from app.servicios.reporte_periodo_service import report_metadata
-        title = report_metadata(request, summary, rows, REPORT_TITLES[request.report_type])
+        title = report_metadata(request, summary, rows, request.report_title or REPORT_TITLES[request.report_type])
         return ReporteResponse(
             customer_id=request._customer_id,
             branch_id=request.branch_id,
@@ -313,15 +315,17 @@ class ReporteService:
             query=db.query(Pago)
             if request.branch_id:query=query.filter(Pago.branch_id==request.branch_id)
             rows=[dict(payment_code=p.payment_code,amount=float(p.amount),currency=p.currency,status=p.status,
-                payment_type=p.payment_type,paid_at=p.paid_at,created_at=p.created_at) for p in query.all()]
+                payment_type=p.payment_type,paid_at=p.paid_at,created_at=p.created_at,branch=p.branch.name if p.branch else '',customer=p.customer_name) for p in query.all()]
             linked=db.query(Pago.reservation_id).filter(Pago.reservation_id.isnot(None))
             reservations=db.query(Reserva).filter(Reserva.payment_status=='PAID',~Reserva.id.in_(linked))
             if request.branch_id:reservations=reservations.filter(Reserva.branch_id==request.branch_id)
             rows += [dict(payment_code=r.reservation_code,amount=float(r.total_amount),
                 currency='USD' if r.payment_method=='WALLET' else settings.PAYPAL_CURRENCY,status='PAID',
-                payment_type=r.payment_method,paid_at=r.paid_at,created_at=r.created_at) for r in reservations.all()]
+                payment_type=r.payment_method,paid_at=r.paid_at,created_at=r.created_at,branch=r.branch.name if r.branch else '',customer=r.customer.full_name if r.customer else '') for r in reservations.all()]
         rows=ReporteService._filter_transactions(rows,request)
-        columns=['payment_code','amount','currency','status','payment_type','paid_at']
+        from app.servicios.reporte_datos_service import dates
+        rows=[{**r,**dates(r.get('paid_at') or r.get('created_at'))} for r in rows]
+        columns=['payment_code','amount','currency','status','payment_type','paid_at','branch','customer','day','week','month','year']
         rows=[{k:(float(r[k]) if k=='amount' else str(r[k]) if k=='paid_at' and r.get(k) else r.get(k)) for k in columns} for r in rows]
         return columns,rows,{'records':len(rows)}
 
@@ -373,8 +377,8 @@ class ReporteService:
                 for stock in v.stocks:
                     if request.branch_id and stock.branch_id!=request.branch_id:continue
                     row=dict(product=p.name,sku=v.sku,color=v.color.name,size=v.size.name,price=price,
-                        units=stock.quantity,branch=stock.branch.name,category=p.category.name if p.category else '',
+                        units=stock.quantity,current_value=round(price*stock.quantity,2),branch=stock.branch.name,category=p.category.name if p.category else '',
                         season=p.season.name if p.season else '')
                     if request.search and request.search.casefold() not in str(row).casefold():continue
                     rows.append(row)
-        return ['product','sku','color','size','price','units','branch','category','season'],rows,{'records':len(rows)}
+        return ['product','sku','color','size','price','units','current_value','branch','category','season'],rows,{'records':len(rows)}

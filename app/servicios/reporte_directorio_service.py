@@ -7,6 +7,11 @@ def directory(db, request, user):
     # VESTA is both the root tenant and a business; include it even with zero branches.
     companies=db.query(Empresa).filter(Empresa.is_active == True).order_by(Empresa.name).all()
     branches=db.query(Sucursal).execution_options(skip_tenant=True).filter(Sucursal.is_active == True).order_by(Sucursal.name).all()
+    if request.company_id:
+        companies=[c for c in companies if c.id==request.company_id]
+    if request.branch_id:
+        branches=[b for b in branches if b.id==request.branch_id]
+        companies=[c for c in companies if any(b.tenant_id==c.id for b in branches)]
     names={c.id:c.name for c in companies}
     if request.report_type == 'companies_list':
         rows=[dict(company=c.name,branches=sum(b.tenant_id==c.id for b in branches)) for c in companies]
@@ -20,6 +25,8 @@ def directory(db, request, user):
     summary={'scope':'Directorio público de empresas','companies':len(companies),'records':len(rows)}
     from app.servicios.reporte_plan_service import shape
     columns,rows,summary=shape(request,columns,rows,summary)
+    from app.servicios.reporte_periodo_service import report_metadata
+    title=report_metadata(request,summary,rows,request.report_title or title)
     return ReporteResponse(customer_id=user.id if user and user.role=='CUSTOMER' else None,
         branch_id=user.branch_id if user else None, report_type=request.report_type,title=title,
         generated_by='manual',summary=summary,columns=columns,rows=rows)

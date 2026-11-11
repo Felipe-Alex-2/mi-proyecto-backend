@@ -152,7 +152,7 @@ def test_generic_branch_fallback_does_not_replace_requested_metrics(monkeypatch)
     from app.servicios.reporte_gemini_service import ReporteGeminiService
     from app.nucleo.excepciones import SolicitudInvalidaException
     monkeypatch.setattr(settings, 'GEMINI_API_KEY', '')
-    with pytest.raises(SolicitudInvalidaException, match='No pude interpretar'):
+    with pytest.raises(SolicitudInvalidaException, match='consulta necesita'):
         ReporteGeminiService.interpret('reporte de ganancias por sucursal')
 
 

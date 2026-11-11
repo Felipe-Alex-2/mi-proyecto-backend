@@ -9,7 +9,7 @@ from app.configuracion import settings
 from app.modelos.reporte_guardado import ReporteGuardado
 from app.esquemas.reporte import ReporteResponse
 
-LABELS={'company_name':'Empresa','branch_name':'Sucursal','payment_code':'Código de comprobante',
+LABELS={'interpretation_source':'Interpretación','unit_price':'Precio unitario neto','current_value':'Valor de venta del stock','day':'Día','week':'Semana','month':'Mes','year':'Año','movement_type':'Tipo de movimiento','previous_stock':'Stock anterior','new_stock':'Stock nuevo','reason':'Motivo','courier':'Repartidor','fee':'Envío cotizado (USD)','distance_km':'Distancia (km)','estimated_minutes':'Minutos estimados','points':'Puntos','description':'Descripción','role':'Rol','active':'Activo','estimated_amount':'Importe estimado','payment_status':'Estado de pago','reservation_code':'Código de reserva','created_at':'Fecha de registro','unitemized_sales':'Cobros sin detalle de prendas','unpriced_sales':'Ventas sin desglose histórico de importes','records_shown':'Filas mostradas','limit_scope':'Límite aplicado','company_name':'Empresa','branch_name':'Sucursal','payment_code':'Código de comprobante',
  'concept':'Concepto','paid_at':'Fecha de pago','payment_type':'Forma de pago','reference':'Referencia',
  'exchange_code':'Código para cambios','exchange_limit':'Plazo de cambio','price':'Precio unitario',
  'size':'Talla','color':'Color','address':'Dirección','matching_records':'Registros encontrados','groups':'Grupos',
