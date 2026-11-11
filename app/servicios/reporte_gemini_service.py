@@ -19,6 +19,36 @@ class ReporteGeminiService:
     def _normalize(value: str) -> str:
         return ''.join(c for c in unicodedata.normalize('NFD', value.lower()) if unicodedata.category(c) != 'Mn')
 
+    @classmethod
+    def _basic_branch_report(cls, phrase: str, matches: list) -> str | None:
+        """Resolve generic branch requests without guessing a specific metric.
+
+        A generic report uses the existing stock snapshot (the manual default),
+        whose title makes the chosen metric explicit. Specific metrics such as
+        profit must still reach the typed planner rather than becoming stock.
+        """
+        if not re.search(r'\b(?:sucursal(?:es)?|tiendas?)\b', phrase):
+            return None
+        remainder = phrase
+        for branch in matches:
+            remainder = re.sub(
+                r'(?<!\w)' + re.escape(cls._normalize(branch.name)) + r'(?!\w)',
+                ' ', remainder,
+            )
+        words = set(re.findall(r'\w+', remainder))
+        allowed = {
+            'un', 'el', 'una', 'quiero', 'necesito', 'dame', 'genera', 'generar',
+            'muestra', 'muestrame', 'mostrar', 'ver', 'reporte', 'reportes',
+            'informe', 'informes', 'resumen', 'general', 'del', 'de', 'la', 'las',
+            'por', 'cada', 'todas', 'toda', 'sucursal', 'sucursales', 'tienda',
+            'tiendas', 'favor',
+        }
+        if not words or not words <= allowed:
+            return None
+        if matches or words & {'reporte', 'reportes', 'informe', 'informes', 'resumen'}:
+            return 'inventory_by_branch'
+        return 'branches_list'
+
     @staticmethod
     def _parse_json(text: str) -> Dict[str, Any]:
         cleaned = text.strip()
@@ -51,6 +81,8 @@ class ReporteGeminiService:
         elif 'temporada' in phrase:kind='products_by_season'
         elif 'categoria' in phrase:kind='products_by_category'
         elif re.search(r'ropa|prenda|stock|inventario|existencia|producto',phrase):kind='inventory_by_branch' if 'sucursal' in phrase else 'products_detail'
+        if kind is None:
+            kind = cls._basic_branch_report(phrase, matches)
         today=datetime.now(timezone(timedelta(hours=-4))).date()
         filters={}
         # Resolve common calendar periods locally, identically for voice and text.
@@ -90,7 +122,7 @@ class ReporteGeminiService:
         if authorize_ai:authorize_ai()
         from app.configuracion import settings
         if not settings.GEMINI_API_KEY:
-            raise SolicitudInvalidaException(detail='La interpretación avanzada necesita configurar Gemini. Puedes consultar: mis pagos, mis recargas, lista las empresas existentes, sucursales, ventas de este mes o stock bajo.')
+            raise SolicitudInvalidaException(detail='No pude interpretar esa consulta. Prueba: ventas por sucursal, stock por sucursal, reservas por sucursal, mis pagos o lista las empresas existentes. Para consultas más complejas, el administrador debe habilitar la interpretación avanzada con IA.')
         prompt = f"""
 Eres un traductor de consultas para reportes empresariales de una tienda de ropa.
 No respondas con explicaciones. Devuelve únicamente JSON válido, sin markdown.

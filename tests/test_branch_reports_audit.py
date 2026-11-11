@@ -105,6 +105,57 @@ def test_comparative_questions_work_without_external_ai(client, monkeypatch, wor
     assert denied.status_code == 200
 
 
+@pytest.mark.parametrize('phrase,kind', [
+    ('reporte por sucursal', 'inventory_by_branch'),
+    ('Reporte por sucursales', 'inventory_by_branch'),
+    ('Quiero un informe por tienda, por favor.', 'inventory_by_branch'),
+    ('reporte general de todas las sucursales', 'inventory_by_branch'),
+    ('sucursales', 'branches_list'),
+    ('tiendas', 'branches_list'),
+    ('ventas por sucursal', 'sales_by_branch'),
+    ('reservas por sucursal', 'reservations_by_branch'),
+])
+def test_generic_branch_requests_are_local_without_gemini(monkeypatch, phrase, kind):
+    from app.configuracion import settings
+    from app.servicios.gemini_client import GeminiClient
+    from app.servicios.reporte_gemini_service import ReporteGeminiService
+    monkeypatch.setattr(settings, 'GEMINI_API_KEY', '')
+    monkeypatch.setattr(GeminiClient, 'generate_text', lambda *_: pytest.fail('Basic requests must stay local'))
+    assert ReporteGeminiService.interpret(phrase).report_type == kind
+
+
+@pytest.mark.parametrize('role', ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'CUSTOMER'])
+def test_screenshot_query_returns_actual_branch_stock_for_every_role(client, world, monkeypatch, role):
+    from app.configuracion import settings
+    from app.servicios.gemini_client import GeminiClient
+    monkeypatch.setattr(settings, 'GEMINI_API_KEY', '')
+    monkeypatch.setattr(GeminiClient, 'generate_text', lambda *_: pytest.fail('No external AI needed'))
+    a, b, _, _, _, users = world
+    response = client.post('/api/v1/reports/voice', headers=users[role], json={'transcript': 'reporte por sucursal'})
+    assert response.status_code == 200, response.text
+    report = response.json()['report']
+    assert report['title'] == 'Stock disponible por sucursal'
+    assert {row['branch']: row['units'] for row in report['rows']} == {'Centro': 3, 'Sur': 20}
+    scoped = client.post('/api/v1/reports/voice', headers=users[role], json={
+        'transcript': 'reporte por sucursal', 'branch_id': a.id,
+    })
+    assert scoped.status_code == 200, scoped.text
+    assert scoped.json()['report']['summary']['total_units'] == 3
+    named = client.post('/api/v1/reports/voice', headers=users[role], json={'transcript': 'informe de sucursal Sur'})
+    assert named.status_code == 200, named.text
+    assert named.json()['interpretation']['branch_id'] == b.id
+    assert named.json()['report']['summary']['total_units'] == 20
+
+
+def test_generic_branch_fallback_does_not_replace_requested_metrics(monkeypatch):
+    from app.configuracion import settings
+    from app.servicios.reporte_gemini_service import ReporteGeminiService
+    from app.nucleo.excepciones import SolicitudInvalidaException
+    monkeypatch.setattr(settings, 'GEMINI_API_KEY', '')
+    with pytest.raises(SolicitudInvalidaException, match='No pude interpretar'):
+        ReporteGeminiService.interpret('reporte de ganancias por sucursal')
+
+
 def test_employee_cannot_read_or_charge_another_branch(client, db_session, world):
     a, b, _, variant, _, users = world
     payment = Pago(payment_code='PRIVATE', branch_id=b.id, customer_name='Cliente', concept='Privado', amount=10)
