@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from contextlib import contextmanager
+import logging
+import uuid
 
 from app.api.dependencias import require_roles
 from app.base_datos import get_db
@@ -10,6 +13,23 @@ from app.servicios.reporte_service import ReporteService
 
 router = APIRouter(prefix="/reports", tags=["Dashboards and Reports (CU19)"])
 report_reader = require_roles(RolUsuario.ADMIN, RolUsuario.STORE_MANAGER, RolUsuario.CASHIER, RolUsuario.CUSTOMER)
+
+
+@contextmanager
+def report_generation(db):
+    """Keep unexpected report failures inside CORS and identify them in logs."""
+    try:
+        yield
+    except HTTPException:
+        raise
+    except Exception as exc:
+        reference=uuid.uuid4().hex[:12]
+        logging.getLogger(__name__).exception('REPORT_GENERATION_FAILED reference=%s',reference)
+        db.rollback()
+        raise HTTPException(500,detail=(
+            'No se pudo generar el reporte por un error interno del backend. '
+            f'Referencia para revisar en los logs: {reference}.'
+        )) from exc
 
 
 @router.get('/branches')
@@ -46,8 +66,9 @@ def generate_report(
     current_user: Usuario = Depends(report_reader),
 ):
     from app.servicios.reporte_entrega_service import finish
-    report=ReporteService.generate(db=db, request=payload, user=current_user)
-    return finish(db,current_user,report,payload)
+    with report_generation(db):
+        report=ReporteService.generate(db=db, request=payload, user=current_user)
+        return finish(db,current_user,report,payload)
 
 
 @router.post(
@@ -62,9 +83,10 @@ def generate_voice_report(
     current_user: Usuario = Depends(report_reader),
 ):
     from app.servicios.reporte_entrega_service import finish
-    interpretation, report = ReporteGeminiService.generate(db=db, transcript=payload.transcript, user=current_user, branch_id=payload.branch_id, all_companies=payload.all_companies)
-    report=finish(db,current_user,report,payload)
-    return ReporteVozResponse(transcript=payload.transcript,interpretation=interpretation,report=report)
+    with report_generation(db):
+        interpretation, report = ReporteGeminiService.generate(db=db, transcript=payload.transcript, user=current_user, branch_id=payload.branch_id, all_companies=payload.all_companies)
+        report=finish(db,current_user,report,payload)
+        return ReporteVozResponse(transcript=payload.transcript,interpretation=interpretation,report=report)
 
 
 @router.get('/{id}/pdf')

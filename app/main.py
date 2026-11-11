@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -240,4 +241,5 @@ def health_check():
             conn.execute(text("SELECT 1"))
     except Exception as e:
         db_status = f"error: {str(e)}"
-    return {"status": "healthy" if db_status == "ok" else "degraded", "database": db_status}
+    return {"status": "healthy" if db_status == "ok" else "degraded", "database": db_status,
+            "deployment_revision": os.getenv("RAILWAY_GIT_COMMIT_SHA")}

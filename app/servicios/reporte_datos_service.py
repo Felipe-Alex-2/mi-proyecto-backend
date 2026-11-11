@@ -105,7 +105,7 @@ class BusinessFacts:
             size=line.get('size') or (variant.size.code if variant and variant.size else ''),
             category=product.category.name if product and product.category else '',
             season=product.season.name if product and product.season else '',
-            supplier=product.supplier.name if product and product.supplier else '')
+            supplier=product.supplier.company_name if product and product.supplier else '')
 
     def sales_items(self):
         paid=self.db.query(Pago).filter(Pago.status=='PAID')

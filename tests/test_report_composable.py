@@ -7,6 +7,8 @@ import pytest
 from tests.test_branch_reports_audit import world
 from app.configuracion import settings
 from app.modelos.producto import Producto
+from app.modelos.proveedor import Proveedor
+from app.modelos.temporada import Temporada
 from app.modelos.variante_producto import VarianteProducto
 from app.modelos.pago import Pago
 from app.modelos.reserva import Reserva
@@ -22,9 +24,13 @@ from app.servicios.reporte_gemini_service import ReporteGeminiService
 @pytest.fixture
 def sold_catalog(db_session,world):
     center,south,product,variant,customer,users=world
+    supplier=Proveedor(company_name='Textiles VESTA',contact_name='Contacto',email='textiles@example.com',phone='70000000')
+    season=Temporada(name='Invierno',start_date=date(2026,5,1),end_date=date(2026,8,31))
+    db_session.add_all([supplier,season]);db_session.flush()
     variants=[]
     for i in range(12):
-        p=Producto(name=f'Prenda {i:02}',price=999,category_id=product.category_id)
+        p=Producto(name=f'Prenda {i:02}',price=999,category_id=product.category_id,
+            supplier_id=supplier.id if i%2==0 else None,season_id=season.id if i%2==0 else None)
         db_session.add(p);db_session.flush()
         v=VarianteProducto(product_id=p.id,size_id=variant.size_id,color_id=variant.color_id,sku=f'FACT-{i:02}')
         db_session.add(v);db_session.flush();variants.append(v)
@@ -82,6 +88,24 @@ def test_monthly_sales_filters_having_and_historical_prices(client,sold_catalog)
     assert len(rows)==2
     assert all(r['sum_units']==33 and r['avg_unit_price']==10 and r['distinct_payment_code']==3 for r in rows)
     assert all(r['month']=='2026-11' and r['color']=='Azul' for r in rows)
+
+
+def test_supplier_and_season_dimensions_use_real_model_fields(client,db_session,sold_catalog):
+    center,_,variants,_,users=sold_catalog
+    result=client.post('/api/v1/reports/generate',headers=users['ADMIN'],json={
+        'report_type':'sales_items','date_from':'2026-08-11','date_to':'2026-11-11',
+        'group_by':['supplier','season'],
+        'filters':[dict(field='supplier',operator='eq',value='Textiles VESTA')],
+        'aggregations':[dict(operation='sum',field='units'),dict(operation='distinct',field='product_id')]})
+    assert result.status_code==200,result.text
+    row=result.json()['rows'][0]
+    assert row['supplier']=='Textiles VESTA' and row['season']=='Invierno'
+    assert row['sum_units']==78 and row['distinct_product_id']==6
+    db_session.add(MovimientoInventario(variant_id=variants[0].id,branch_id=center.id,type='ENTRY',quantity=3,reason='Ingreso'))
+    db_session.commit()
+    movements=client.post('/api/v1/reports/generate',headers=users['ADMIN'],json={'report_type':'inventory_movements'})
+    assert movements.status_code==200,movements.text
+    assert movements.json()['rows'][0]['supplier']=='Textiles VESTA'
 
 
 def test_line_amounts_reconcile_discounts_and_do_not_duplicate_paid_reservations(db_session,world):
@@ -237,3 +261,26 @@ def test_directory_plan_honors_branch_filter_and_composes_counts(client,db_sessi
     assert result.status_code==200,result.text
     assert result.json()['title']=='Sucursales seleccionadas'
     assert result.json()['rows'][0]['count_records']==1
+
+
+@pytest.mark.parametrize('endpoint,payload',[
+    ('generate',{'report_type':'sales_items'}),
+    ('voice',{'transcript':'productos vendidos por sucursal'}),
+])
+def test_report_server_errors_keep_cors_and_log_reference(client,db_session,world,monkeypatch,caplog,endpoint,payload):
+    from app.servicios.reporte_service import ReporteService
+    from app.modelos.reporte_guardado import ReporteGuardado
+    monkeypatch.setattr(ReporteGeminiService,'interpret',lambda *args,**kwargs:ReporteRequest(report_type='sales_items'))
+    def broken(*args,**kwargs):
+        raise AttributeError('Proveedor has no name')
+    monkeypatch.setattr(ReporteService,'generate',broken)
+    origin=settings.cors_origins_list[0]
+    response=client.post('/api/v1/reports/'+endpoint,headers={**world[-1]['ADMIN'],'Origin':origin},json=payload)
+    assert response.status_code==500
+    assert response.headers['access-control-allow-origin']==origin
+    detail=response.json()['detail']
+    assert 'backend' in detail and 'Referencia' in detail
+    reference=detail.split(': ')[-1].rstrip('.')
+    assert reference in caplog.text and 'REPORT_GENERATION_FAILED' in caplog.text
+    assert 'Proveedor' not in detail and 'Gemini' not in detail
+    assert db_session.query(ReporteGuardado).count()==0
